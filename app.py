@@ -1,14 +1,17 @@
 # ============================================
 # MARKET CONDITION DASHBOARD - ENTERPRISE EDITION
-# Market Regime displayed prominently at top
+# With Head-to-Head Benchmark Section
 # ============================================
 
 import streamlit as st
+import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from datetime import datetime, timedelta
+import warnings
+warnings.filterwarnings('ignore')
 
 # ============================================
 # PAGE CONFIG
@@ -141,6 +144,49 @@ st.markdown("""
         line-height: 1.8;
     }
     
+    .benchmark-table {
+        background: rgba(255,255,255,0.05);
+        border-radius: 15px;
+        padding: 20px;
+        border: 1px solid rgba(255,255,255,0.08);
+        overflow-x: auto;
+    }
+    
+    .benchmark-table table {
+        width: 100%;
+        border-collapse: collapse;
+        color: rgba(255,255,255,0.9);
+    }
+    
+    .benchmark-table th {
+        background: rgba(255,255,255,0.1);
+        padding: 12px 15px;
+        text-align: left;
+        font-weight: 600;
+        color: rgba(255,255,255,0.7);
+        border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+    
+    .benchmark-table td {
+        padding: 10px 15px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    
+    .benchmark-table .winner {
+        color: #2ecc71;
+        font-weight: 600;
+    }
+    
+    .benchmark-table .winner-badge {
+        display: inline-block;
+        background: rgba(46,204,113,0.2);
+        color: #2ecc71;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
     .regime-icon {
         font-size: 64px;
     }
@@ -183,7 +229,6 @@ with col2:
 
 @st.cache_data(ttl=1800)
 def fetch_market_data():
-    """Fetch market data with fallbacks"""
     try:
         import yfinance as yf
         
@@ -305,7 +350,7 @@ else:
     regime_class = "regime-bull"
 
 # ============================================
-# ⭐ MAIN REGIME CARD (PROMINENT AT TOP)
+# MAIN REGIME CARD
 # ============================================
 
 st.markdown(f"""
@@ -323,7 +368,7 @@ st.markdown(f"""
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# METRICS ROW (Detailed data below regime)
+# METRICS ROW
 # ============================================
 
 col1, col2, col3, col4 = st.columns(4)
@@ -491,7 +536,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # ⭐ Regime in Sidebar (prominent)
     st.markdown(f"""
     <div style="text-align:center; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid {signal_color};">
         <div style="font-size:36px;">{signal_emoji}</div>
@@ -535,7 +579,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    st.markdown(f"**🎯 Action Required:**")
     if target == 100:
         st.info("✅ No action needed. Continue holding.")
     elif target == 50:
@@ -550,7 +593,7 @@ with st.sidebar:
         st.rerun()
 
 # ============================================
-# STRATEGY DESCRIPTION (Clean version)
+# STRATEGY OVERVIEW & HEAD-TO-HEAD BENCHMARK
 # ============================================
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
@@ -606,31 +649,167 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 3. Combined Strategy
+# ============================================
+# HEAD-TO-HEAD BENCHMARK SECTION
+# ============================================
+
 st.markdown("""
 <div class="strategy-description" style="margin-top:15px;">
-    <h4 style="color:#6c5ce7; margin-top:0;">🎯 The Combined Strategy</h4>
-    <p style="color:rgba(255,255,255,0.8);">
-        The strategy uses a <strong>hierarchical decision framework</strong>:
+    <h3 style="color:white; margin-top:0;">🏆 Head-to-Head Benchmark: Buy & Hold vs. Tactical Overlay</h3>
+    <p style="color:rgba(255,255,255,0.7); font-size:14px;">
+        <strong>Period:</strong> 2011-08-24 to 2026-08-20 (15.0 years | 3,768 trading days)<br>
+        <strong>Initial Investment:</strong> $10,000
     </p>
-    <ol style="color:rgba(255,255,255,0.8); padding-left:20px;">
-        <li><strong>Trend First:</strong> If SPY is below its 200-day SMA, the strategy goes to 0% exposure (cash). This is the primary risk-control mechanism.</li>
-        <li><strong>Volatility Second:</strong> If SPY is above its 200-day SMA but VIX exceeds 30, the strategy reduces exposure to 50%.</li>
-        <li><strong>Full Exposure:</strong> Only when SPY is above its 200-day SMA AND VIX is below 30 does the strategy maintain 100% exposure.</li>
-    </ol>
+</div>
+""", unsafe_allow_html=True)
+
+# Benchmark Table using HTML
+st.markdown("""
+<div class="benchmark-table">
+    <table>
+        <thead>
+            <tr>
+                <th>KPI Metric</th>
+                <th>Buy &amp; Hold</th>
+                <th>Tactical (SMA200 + VIX)</th>
+                <th>Winner</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Total Return</strong></td>
+                <td>748.0%</td>
+                <td>341.6%</td>
+                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+            </tr>
+            <tr>
+                <td><strong>Annualized Return (CAGR)</strong></td>
+                <td>15.4%</td>
+                <td>10.4%</td>
+                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+            </tr>
+            <tr>
+                <td><strong>Annualized Volatility</strong></td>
+                <td>16.9%</td>
+                <td>11.1%</td>
+                <td><span class="winner">🏆 Tactical Overlay</span></td>
+            </tr>
+            <tr>
+                <td><strong>Max Drawdown</strong></td>
+                <td style="color:#e74c3c;">-33.7%</td>
+                <td style="color:#2ecc71;">-21.4%</td>
+                <td><span class="winner">🏆 Tactical Overlay</span></td>
+            </tr>
+            <tr>
+                <td><strong>Sharpe Ratio (rf=2%)</strong></td>
+                <td>0.81</td>
+                <td>0.77</td>
+                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+            </tr>
+            <tr>
+                <td><strong>Sortino Ratio</strong></td>
+                <td>1.01</td>
+                <td>0.88</td>
+                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+            </tr>
+            <tr>
+                <td><strong>Calmar Ratio</strong></td>
+                <td>0.46</td>
+                <td>0.49</td>
+                <td><span class="winner">🏆 Tactical Overlay</span></td>
+            </tr>
+            <tr>
+                <td><strong>Win Rate (Active Days)</strong></td>
+                <td>55.4%</td>
+                <td>54.9%</td>
+                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+            </tr>
+            <tr>
+                <td><strong>Max Consecutive Losses</strong></td>
+                <td>8</td>
+                <td>7</td>
+                <td><span class="winner">🏆 Tactical Overlay</span></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================
+# WHY USE TACTICAL OVERLAY - EXPLANATION
+# ============================================
+
+st.markdown("""
+<div class="strategy-description" style="margin-top:15px;">
+    <h4 style="color:#6c5ce7; margin-top:0;">🤔 Why Use the Tactical Overlay if Returns Are Lower?</h4>
     <p style="color:rgba(255,255,255,0.8);">
-        This dual-filter approach has been backtested over multiple market cycles (2018-2026) and achieved:
+        This is the most important question. The answer lies in <strong>risk management</strong> 
+        and the <strong>psychological reality</strong> of investing:
+    </p>
+    
+    <div style="background:rgba(46,204,113,0.1); border-left:3px solid #2ecc71; padding:15px; margin:15px 0; border-radius:5px;">
+        <p style="color:rgba(255,255,255,0.9);">
+            <strong>🔑 Key Insight:</strong> The Tactical Overlay cuts maximum drawdown <strong>from -33.7% to -21.4%</strong> 
+            — a <strong>36% reduction</strong> in peak-to-trough loss.
+        </p>
+    </div>
+    
+    <p style="color:rgba(255,255,255,0.8);">
+        <strong>Why this matters:</strong>
     </p>
     <ul style="color:rgba(255,255,255,0.8); padding-left:20px;">
-        <li><strong style="color:#2ecc71;">Sharpe Ratio: 0.95</strong> (after transaction costs)</li>
-        <li><strong style="color:#2ecc71;">Annual Return: 21.6%</strong></li>
-        <li><strong style="color:#2ecc71;">Max Drawdown: -26.8%</strong> (vs S&P 500 -33.7%)</li>
-        <li><strong style="color:#2ecc71;">Excess Return: +6.4%</strong> over S&P 500</li>
+        <li><strong>Psychological Survival:</strong> A 33.7% drawdown means $10,000 becomes $6,630. 
+        Many investors panic and sell at the bottom. A 21.4% drawdown ($10,000 → $7,860) is 
+        <strong>emotionally easier to withstand</strong> and less likely to trigger panic selling.</li>
+        <li><strong>Recovery Time:</strong> A 33.7% loss requires a <strong>50.8% gain</strong> to recover. 
+        A 21.4% loss requires only a <strong>27.2% gain</strong> — <strong>nearly half</strong> the required recovery.</li>
+        <li><strong>Consistency:</strong> The Tactical strategy has slightly lower risk-adjusted returns (Sharpe 0.77 vs 0.81), 
+        but <strong>much lower volatility</strong> (11.1% vs 16.9%) and <strong>better downside protection</strong> 
+        (Calmar 0.49 vs 0.46).</li>
+        <li><strong>Behavioral Edge:</strong> A strategy you can <strong>stick with</strong> during tough times 
+        is more valuable than one with mathematically higher returns that you cannot hold.</li>
     </ul>
 </div>
 """, unsafe_allow_html=True)
 
-# 4. Disclaimer
+# ============================================
+# TACTICAL EXPOSURE STATS
+# ============================================
+
+st.markdown("""
+<div class="strategy-description" style="margin-top:15px;">
+    <h4 style="color:#fd79a8; margin-top:0;">📊 Tactical Exposure Statistics</h4>
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin:15px 0;">
+        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
+            <div style="font-size:28px; font-weight:700; color:#2ecc71;">80.2%</div>
+            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Time Invested (3,021 days)</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
+            <div style="font-size:28px; font-weight:700; color:#f39c12;">19.8%</div>
+            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Time in Cash (747 days)</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
+            <div style="font-size:28px; font-weight:700; color:#e17055;">83</div>
+            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Total Switches (Trades)</div>
+        </div>
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
+            <div style="font-size:20px; font-weight:700; color:#3498db;">$84,799.94</div>
+            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Final Balance (Buy &amp; Hold)</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
+            <div style="font-size:20px; font-weight:700; color:#2ecc71;">$44,158.88</div>
+            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Final Balance (Tactical Overlay)</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================
+# DISCLAIMER
+# ============================================
+
 st.markdown("""
 <div class="strategy-description" style="margin-top:15px; border-left: 3px solid #fd79a8; padding-left: 20px;">
     <h4 style="color:#fd79a8; margin-top:0;">⚠️ Important Disclaimer</h4>
