@@ -1,7 +1,6 @@
-
 # ============================================
-# MARKET CONDITION DASHBOARD - WITH S6 EXECUTION MATRIX
-# COMPLETE WORKING VERSION - FULLY REWRITTEN
+# MARKET CONDITION DASHBOARD - WITH ORDER BOOK PLAN
+# Includes portfolio size input and execution plan
 # ============================================
 
 import streamlit as st
@@ -187,22 +186,22 @@ st.markdown("""
         line-height: 1.8;
     }
     
-    .execution-table {
+    .order-plan {
         background: rgba(255,255,255,0.05);
         border-radius: 15px;
         padding: 20px;
         border: 1px solid rgba(255,255,255,0.08);
-        overflow-x: auto;
+        margin-top: 15px;
     }
     
-    .execution-table table {
+    .order-plan table {
         width: 100%;
         border-collapse: collapse;
         color: rgba(255,255,255,0.9);
         font-size: 13px;
     }
     
-    .execution-table th {
+    .order-plan th {
         background: rgba(255,255,255,0.1);
         padding: 10px 12px;
         text-align: left;
@@ -211,9 +210,24 @@ st.markdown("""
         border-bottom: 2px solid rgba(255,255,255,0.1);
     }
     
-    .execution-table td {
+    .order-plan td {
         padding: 8px 12px;
         border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    
+    .order-plan .action-buy {
+        color: #2ecc71;
+        font-weight: 600;
+    }
+    
+    .order-plan .action-sell {
+        color: #e74c3c;
+        font-weight: 600;
+    }
+    
+    .order-plan .action-hold {
+        color: #fdcb6e;
+        font-weight: 600;
     }
     
     .signal-tag {
@@ -326,6 +340,102 @@ ETF_CONFIG = {
 
 def get_etf_config(s6_target):
     return ETF_CONFIG.get(s6_target, None)
+
+# ============================================
+# ORDER BOOK PLAN GENERATOR
+# ============================================
+
+def generate_order_plan(target_etf, portfolio_size, current_holdings=None):
+    """
+    Generate order book plan based on target ETF and portfolio size.
+    
+    Parameters:
+    - target_etf: The ETF config dict
+    - portfolio_size: Total portfolio value in USD
+    - current_holdings: Dict of current holdings (ticker -> shares)
+    
+    Returns:
+    - Dict with order plan details
+    """
+    if target_etf is None:
+        return None
+    
+    # Default: assume we're starting from zero (no current holdings)
+    if current_holdings is None:
+        current_holdings = {}
+    
+    # Get target ETF details
+    ticker = target_etf['ticker']
+    price = target_etf['price']
+    name = target_etf['name']
+    currency = target_etf['currency']
+    ter = target_etf['ter']
+    isin = target_etf['isin']
+    exchange = target_etf['exchange']
+    
+    # Calculate target shares (use 100% of portfolio)
+    target_shares = portfolio_size / price
+    
+    # Get current shares (if any)
+    current_shares = current_holdings.get(ticker, 0)
+    
+    # Calculate difference
+    diff_shares = target_shares - current_shares
+    
+    # Determine action
+    if diff_shares > 0.01:
+        action = "BUY"
+        action_class = "action-buy"
+        shares_to_trade = diff_shares
+        estimated_cost = shares_to_trade * price
+    elif diff_shares < -0.01:
+        action = "SELL"
+        action_class = "action-sell"
+        shares_to_trade = abs(diff_shares)
+        estimated_cost = shares_to_trade * price
+    else:
+        action = "HOLD"
+        action_class = "action-hold"
+        shares_to_trade = 0
+        estimated_cost = 0
+    
+    return {
+        'ticker': ticker,
+        'name': name,
+        'price': price,
+        'currency': currency,
+        'ter': ter,
+        'isin': isin,
+        'exchange': exchange,
+        'current_shares': current_shares,
+        'target_shares': target_shares,
+        'shares_to_trade': shares_to_trade,
+        'action': action,
+        'action_class': action_class,
+        'estimated_cost': estimated_cost,
+        'portfolio_size': portfolio_size,
+        'target_allocation': portfolio_size
+    }
+
+def generate_full_order_book(s6_target, portfolio_size, current_holdings=None):
+    """
+    Generate full order book plan for all ETFs based on S6 target.
+    Only the target ETF gets the full allocation, others get 0.
+    """
+    order_book = []
+    
+    # Get the target ETF config
+    target_etf = get_etf_config(s6_target)
+    
+    if target_etf is None:
+        return []
+    
+    # Generate plan for the target ETF (100% allocation)
+    plan = generate_order_plan(target_etf, portfolio_size, current_holdings)
+    if plan:
+        order_book.append(plan)
+    
+    return order_book
 
 # ============================================
 # DATA FETCHING
@@ -573,7 +683,102 @@ with col4:
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# EXECUTION MATRIX TABLE - USING PANDAS DATAFRAME
+# PORTFOLIO SIZE & ORDER BOOK PLAN
+# ============================================
+
+st.markdown("""
+<div class="strategy-description">
+    <h3 style="color:white; margin-top:0;">📋 Order Book Plan</h3>
+    <p style="color:rgba(255,255,255,0.7); font-size:14px;">
+        Enter your portfolio size below to generate today's execution plan.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+# Portfolio size input
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    portfolio_size = st.number_input(
+        "💰 Portfolio Size (USD)",
+        min_value=1000,
+        max_value=1000000,
+        value=25000,
+        step=1000,
+        help="Enter your total portfolio value in USD"
+    )
+
+with col2:
+    st.markdown(f"""
+    <div style="background:rgba(255,255,255,0.05); border-radius:10px; padding:15px; margin-top:25px;">
+        <div style="color:rgba(255,255,255,0.5); font-size:12px; text-transform:uppercase; letter-spacing:1px;">Target Allocation</div>
+        <div style="font-size:24px; font-weight:700; color:{data['s6_color']};">100% → {data['s6_target']}</div>
+        <div style="font-size:12px; color:rgba(255,255,255,0.4);">{data['s6_reason'][:60]}...</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Generate order book plan
+order_book = generate_full_order_book(data['s6_target'], portfolio_size)
+
+if order_book and len(order_book) > 0:
+    plan = order_book[0]
+    
+    st.markdown(f"""
+    <div class="order-plan">
+        <h4 style="color:white; margin-top:0;">📊 Execution Plan</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>ETF</th>
+                    <th>Ticker</th>
+                    <th>Price</th>
+                    <th>Shares</th>
+                    <th>Total Cost</th>
+                    <th>Allocation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="{plan['action_class']}">{plan['action']}</span></td>
+                    <td>{plan['name']}</td>
+                    <td><strong>{plan['ticker']}</strong></td>
+                    <td>${plan['price']:.2f}</td>
+                    <td>{plan['shares_to_trade']:.2f}</td>
+                    <td>${plan['estimated_cost']:,.2f}</td>
+                    <td>{plan['target_allocation']/portfolio_size*100:.1f}%</td>
+                </tr>
+            </tbody>
+        </table>
+        <div style="margin-top:15px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; display:flex; justify-content:space-between; flex-wrap:wrap;">
+            <span style="color:rgba(255,255,255,0.5); font-size:12px;">
+                ISIN: {plan['isin']} | Exchange: {plan['exchange']}
+            </span>
+            <span style="color:rgba(255,255,255,0.5); font-size:12px;">
+                TER: {plan['ter']} | Currency: {plan['currency']}
+            </span>
+            <span style="color:rgba(255,255,255,0.5); font-size:12px;">
+                Portfolio: ${portfolio_size:,.2f} → Target: ${plan['target_allocation']:,.2f}
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Execution instructions
+    if plan['action'] == "BUY":
+        st.info(f"📈 **BUY Order:** Place a **limit order** for {plan['shares_to_trade']:.2f} shares of {plan['ticker']} at or near ${plan['price']:.2f}. Total cost: ${plan['estimated_cost']:,.2f}.")
+    elif plan['action'] == "SELL":
+        st.warning(f"📉 **SELL Order:** Place a **limit order** to sell {plan['shares_to_trade']:.2f} shares of {plan['ticker']} at or near ${plan['price']:.2f}. Total proceeds: ${plan['estimated_cost']:,.2f}.")
+    else:
+        st.success(f"✅ **HOLD:** No action needed. Current position matches target allocation for {plan['ticker']}.")
+
+else:
+    st.warning("⚠️ No order book plan generated. Please check your configuration.")
+
+st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
+
+# ============================================
+# EXECUTION MATRIX TABLE
 # ============================================
 
 st.markdown("""
@@ -616,12 +821,6 @@ for target, config in ETF_CONFIG.items():
     })
 
 df_matrix = pd.DataFrame(matrix_data)
-
-# Style the DataFrame
-def highlight_current(row):
-    if row['✅'] == '✅ Current':
-        return ['background-color: rgba(46,204,113,0.15)'] * len(row)
-    return [''] * len(row)
 
 st.dataframe(
     df_matrix,
