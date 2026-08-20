@@ -292,7 +292,7 @@ ETF_CONFIG = {
         'currency': 'USD',
         'description': 'iShares Core S&P 500 UCITS ETF (Acc)',
         'signal': 'Elevated Bull',
-        'condition': 'SPY > SMA200 & 20 ≤ VIX < 30',
+        'condition': 'SPY > SMA200 & 20 <= VIX < 30',
         'tag': 'tag-spy'
     },
     'GLD': {
@@ -324,7 +324,6 @@ ETF_CONFIG = {
 }
 
 def get_etf_config(s6_target):
-    """Get ETF configuration for S6 target"""
     return ETF_CONFIG.get(s6_target, None)
 
 # ============================================
@@ -371,26 +370,26 @@ def fetch_market_data():
         if current_vix >= 30 or not is_above_sma200:
             if current_gld_mom > 0:
                 s6_target = "GLD"
-                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) → Gold momentum positive ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) -> Gold momentum positive ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#f39c12"
                 s6_class = "signal-gld"
                 s6_emoji = "🪙"
             else:
                 s6_target = "BIL"
-                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) → Gold momentum negative ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) -> Gold momentum negative ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#0984e3"
                 s6_class = "signal-bil"
                 s6_emoji = "🏦"
         else:
             if current_vix < 20:
                 s6_target = "QQQ"
-                s6_reason = f"Calm Bull (SPY > 200 SMA, VIX < 20) → Tech Equity"
+                s6_reason = "Calm Bull (SPY > 200 SMA, VIX < 20) -> Tech Equity"
                 s6_color = "#6c5ce7"
                 s6_class = "signal-qqq"
                 s6_emoji = "🚀"
             else:
                 s6_target = "SPY"
-                s6_reason = f"Elevated Bull (SPY > 200 SMA, 20 <= VIX < 30) → Broad Equity"
+                s6_reason = "Elevated Bull (SPY > 200 SMA, 20 <= VIX < 30) -> Broad Equity"
                 s6_color = "#00cec9"
                 s6_class = "regime-bull"
                 s6_emoji = "🐂"
@@ -666,7 +665,7 @@ st.markdown("""
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# CHARTS - COMPLETELY FIXED
+# CHARTS
 # ============================================
 
 st.markdown("### 📊 Market Charts")
@@ -705,7 +704,7 @@ fig.add_trace(go.Scatter(x=data['vix_hist'].index, y=data['vix_hist'], name="VIX
 fig.add_hline(y=30, line_dash="dash", line_color="#d63031", annotation_text="Risk Threshold (30)", row=2, col=2)
 fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", annotation_text="Calm Threshold (20)", row=2, col=2)
 
-# 5. S6 Exposure - COMPLETELY FIXED (using a loop that won't break)
+# 5. S6 Exposure - COMPLETELY REWRITTEN TO AVOID BREAKAGE
 s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
 
 for i in range(200, len(data['spy_hist'])):
@@ -715,6 +714,3 @@ for i in range(200, len(data['spy_hist'])):
         vix_val = data['vix_hist'].iloc[i]
         
         if pd.isna(sma_val) or pd.isna(vix_val):
-            continue
-        
-        if vix
