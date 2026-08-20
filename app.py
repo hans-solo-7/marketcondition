@@ -1,8 +1,6 @@
 # ============================================
 # MARKET CONDITION DASHBOARD - ENTERPRISE EDITION
-# Fixed Plotly Indicator issue
-# With Real/Simulated Data Indicator
-# With Strategy Description at bottom
+# Market Regime displayed prominently at top
 # ============================================
 
 import streamlit as st
@@ -50,30 +48,30 @@ st.markdown("""
         border-color: rgba(255,255,255,0.2);
     }
     
-    .signal-bull {
+    .regime-bull {
         background: linear-gradient(135deg, #00b894, #00cec9);
         border-radius: 15px;
-        padding: 25px;
+        padding: 30px;
         box-shadow: 0 8px 32px rgba(0,206,201,0.3);
         animation: pulse-green 2s infinite;
         text-align: center;
         color: white;
     }
     
-    .signal-bear {
+    .regime-bear {
         background: linear-gradient(135deg, #e17055, #d63031);
         border-radius: 15px;
-        padding: 25px;
+        padding: 30px;
         box-shadow: 0 8px 32px rgba(214,48,49,0.3);
         animation: pulse-red 2s infinite;
         text-align: center;
         color: white;
     }
     
-    .signal-neutral {
+    .regime-neutral {
         background: linear-gradient(135deg, #fdcb6e, #e17055);
         border-radius: 15px;
-        padding: 25px;
+        padding: 30px;
         box-shadow: 0 8px 32px rgba(225,112,85,0.3);
         animation: pulse-orange 2s infinite;
         text-align: center;
@@ -142,6 +140,32 @@ st.markdown("""
         color: rgba(255,255,255,0.8);
         line-height: 1.8;
     }
+    
+    .regime-icon {
+        font-size: 64px;
+    }
+    
+    .regime-label {
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: 2px;
+    }
+    
+    .regime-desc {
+        font-size: 16px;
+        opacity: 0.9;
+        margin-top: 8px;
+    }
+    
+    .regime-action {
+        font-size: 18px;
+        font-weight: 600;
+        margin-top: 12px;
+        background: rgba(0,0,0,0.2);
+        padding: 10px 20px;
+        border-radius: 10px;
+        display: inline-block;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -163,7 +187,6 @@ def fetch_market_data():
     try:
         import yfinance as yf
         
-        # SPY
         spy = yf.Ticker("SPY")
         spy_hist = spy.history(period="1y")
         
@@ -174,7 +197,6 @@ def fetch_market_data():
             spy_low = spy_hist['Close'].min()
             spy_volume = spy_hist['Volume'].iloc[-1]
             
-            # VIX
             vix = yf.Ticker("^VIX")
             vix_hist = vix.history(period="1mo")
             vix_close = vix_hist['Close'].iloc[-1] if len(vix_hist) > 0 else 20
@@ -233,9 +255,9 @@ with st.spinner("🔮 Loading market data..."):
 # ============================================
 
 if data['data_source'] == 'real':
-    st.markdown('<div style="text-align:center; margin-bottom:10px;"><span class="data-source-badge badge-real">✅ LIVE DATA</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-real">✅ LIVE DATA</span></div>', unsafe_allow_html=True)
 else:
-    st.markdown('<div style="text-align:center; margin-bottom:10px;"><span class="data-source-badge badge-simulated">⚠️ SIMULATED DATA (Yahoo Finance Rate Limited)</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-simulated">⚠️ SIMULATED DATA (Yahoo Finance Rate Limited)</span></div>', unsafe_allow_html=True)
 
 st.markdown(f'<p style="text-align:center; color: rgba(255,255,255,0.4); font-size:13px;">Last updated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ET</p>', unsafe_allow_html=True)
 
@@ -259,25 +281,49 @@ if spy_close < spy_sma_200:
     signal = "BEAR"
     signal_emoji = "🐻"
     signal_color = "#e74c3c"
-    signal_label = "SELL ALL"
-    action_text = "Exit all positions immediately"
+    signal_label = "BEAR MARKET"
+    signal_desc = "S&P 500 below 200-day SMA"
+    action_text = "🔴 SELL ALL - Exit all positions immediately"
+    regime_class = "regime-bear"
 elif vix_close > 30:
     target = 50
     signal = "NEUTRAL"
     signal_emoji = "⚠️"
     signal_color = "#f39c12"
-    signal_label = "REDUCE TO 50%"
-    action_text = "Reduce exposure to 50%"
+    signal_label = "CAUTION"
+    signal_desc = "VIX above 30 (elevated volatility)"
+    action_text = "🟠 REDUCE TO 50% - Sell half of positions"
+    regime_class = "regime-neutral"
 else:
     target = 100
     signal = "BULL"
     signal_emoji = "🐂"
     signal_color = "#2ecc71"
-    signal_label = "HOLD 100%"
-    action_text = "Continue holding positions"
+    signal_label = "BULL MARKET"
+    signal_desc = "All indicators normal"
+    action_text = "🟢 HOLD 100% - Continue holding positions"
+    regime_class = "regime-bull"
 
 # ============================================
-# TOP METRICS ROW
+# ⭐ MAIN REGIME CARD (PROMINENT AT TOP)
+# ============================================
+
+st.markdown(f"""
+<div class="{regime_class}">
+    <div class="regime-icon">{signal_emoji}</div>
+    <div class="regime-label">{signal_label}</div>
+    <div class="regime-desc">{signal_desc}</div>
+    <div style="font-size:14px; opacity:0.8; margin-top:5px;">
+        Target Exposure: <strong>{target}%</strong>
+    </div>
+    <div class="regime-action">{action_text}</div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
+
+# ============================================
+# METRICS ROW (Detailed data below regime)
 # ============================================
 
 col1, col2, col3, col4 = st.columns(4)
@@ -323,55 +369,18 @@ with col4:
     <div class="metric-card">
         <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">🎯 Target Exposure</div>
         <div style="font-size:32px; font-weight:700; color:{signal_color};">{target}%</div>
-        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">Signal: {signal_label}</span></div>
+        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">Regime: {signal_label}</span></div>
         <div style="margin-top:3px;"><span style="color:rgba(255,255,255,0.2); font-size:11px;">{action_text}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
 # ============================================
-# SIGNAL CARD
+# CHARTS
 # ============================================
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
-
-if signal == "BULL":
-    signal_class = "signal-bull"
-    signal_icon = "🚀"
-    signal_text = "BULL MARKET"
-    signal_desc = "All indicators positive. Maintain full exposure."
-elif signal == "BEAR":
-    signal_class = "signal-bear"
-    signal_icon = "⚠️"
-    signal_text = "BEAR MARKET"
-    signal_desc = "S&P 500 below 200-day SMA. Reduce exposure."
-else:
-    signal_class = "signal-neutral"
-    signal_icon = "⚡"
-    signal_text = "CAUTION"
-    signal_desc = "VIX elevated. Consider reducing exposure."
-
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    st.markdown(f"""
-    <div class="{signal_class}">
-        <div style="font-size:48px; margin-bottom:10px;">{signal_icon}</div>
-        <div style="font-size:28px; font-weight:700; letter-spacing:2px;">{signal_text}</div>
-        <div style="font-size:16px; opacity:0.9; margin-top:8px;">{signal_desc}</div>
-        <div style="font-size:14px; opacity:0.7; margin-top:12px;">
-            Target Exposure: <strong>{target}%</strong> | {action_text}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
-
-# ============================================
-# CHARTS (Fixed - No Indicator in Subplots)
-# ============================================
-
 st.markdown("### 📊 Market Charts")
 
-# Create simple subplots without Indicator
 fig = make_subplots(
     rows=2, cols=2,
     shared_xaxes=False,
@@ -381,7 +390,7 @@ fig = make_subplots(
         "S&P 500 (SPY) with 200-day SMA",
         "VIX (Fear Index)",
         "Volume",
-        "Target Exposure Gauge"
+        "Target Exposure"
     )
 )
 
@@ -435,7 +444,7 @@ fig.add_trace(
     row=2, col=1
 )
 
-# 4. Gauge Chart (Separate, not in subplot - use simple bar instead)
+# 4. Target Exposure Bar
 fig.add_trace(
     go.Bar(
         x=["Exposure"],
@@ -449,7 +458,7 @@ fig.add_trace(
     row=2, col=2
 )
 
-# Add target reference lines
+# Reference lines
 fig.add_hline(y=100, line_dash="dot", line_color="#2ecc71", 
               annotation_text="100% (Bull)", row=2, col=2)
 fig.add_hline(y=50, line_dash="dot", line_color="#f39c12", 
@@ -457,7 +466,6 @@ fig.add_hline(y=50, line_dash="dot", line_color="#f39c12",
 fig.add_hline(y=0, line_dash="dot", line_color="#e74c3c", 
               annotation_text="0% (Bear)", row=2, col=2)
 
-# Update layout
 fig.update_layout(
     height=700,
     showlegend=True,
@@ -483,12 +491,22 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # ⭐ Regime in Sidebar (prominent)
+    st.markdown(f"""
+    <div style="text-align:center; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid {signal_color};">
+        <div style="font-size:36px;">{signal_emoji}</div>
+        <div style="font-size:20px; font-weight:700; color:{signal_color};">{signal_label}</div>
+        <div style="font-size:14px; color:rgba(255,255,255,0.7);">{signal_desc}</div>
+        <div style="font-size:16px; font-weight:600; color:white; margin-top:5px;">Target: {target}%</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
     st.markdown("#### 🔍 Current Snapshot")
     st.write(f"**S&P 500:** ${spy_close:.2f}")
     st.write(f"**200-day SMA:** ${spy_sma_200:.2f}")
     st.write(f"**VIX:** {vix_close:.1f}")
-    st.write(f"**Target Exposure:** **{target}%**")
-    st.write(f"**Regime:** {signal_emoji} **{signal_text}**")
     
     st.markdown("---")
     
@@ -517,6 +535,7 @@ with st.sidebar:
     
     st.markdown("---")
     
+    st.markdown(f"**🎯 Action Required:**")
     if target == 100:
         st.info("✅ No action needed. Continue holding.")
     elif target == 50:
@@ -531,8 +550,7 @@ with st.sidebar:
         st.rerun()
 
 # ============================================
-# STRATEGY DESCRIPTION - CLEAN VERSION
-# Using st.markdown properly with raw strings
+# STRATEGY DESCRIPTION (Clean version)
 # ============================================
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
@@ -547,10 +565,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ============================================
-# SECTION 1: 200-Day Moving Average
-# ============================================
-
+# 1. 200-Day Moving Average
 st.markdown("""
 <div class="strategy-description" style="margin-top:15px;">
     <h4 style="color:#00cec9; margin-top:0;">1️⃣ The 200-Day Moving Average (Trend Filter)</h4>
@@ -571,10 +586,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ============================================
-# SECTION 2: VIX
-# ============================================
-
+# 2. VIX
 st.markdown("""
 <div class="strategy-description" style="margin-top:15px;">
     <h4 style="color:#f39c12; margin-top:0;">2️⃣ The VIX (Volatility Filter)</h4>
@@ -594,10 +606,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ============================================
-# SECTION 3: Combined Strategy
-# ============================================
-
+# 3. Combined Strategy
 st.markdown("""
 <div class="strategy-description" style="margin-top:15px;">
     <h4 style="color:#6c5ce7; margin-top:0;">🎯 The Combined Strategy</h4>
@@ -621,6 +630,31 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# 4. Disclaimer
+st.markdown("""
+<div class="strategy-description" style="margin-top:15px; border-left: 3px solid #fd79a8; padding-left: 20px;">
+    <h4 style="color:#fd79a8; margin-top:0;">⚠️ Important Disclaimer</h4>
+    <p style="font-size:14px; color:rgba(255,255,255,0.6);">
+        This dashboard is for <strong>educational and informational purposes only</strong>. 
+        Past performance does not guarantee future results. The strategy is a systematic, rules-based 
+        approach that has been backtested, but all investments carry risk. 
+        Always consult with a qualified financial advisor before making investment decisions.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
 # ============================================
-# SECTION 4: Disclaimer (Fixed - No HTML tags showing)
+# FOOTER
 # ============================================
+
+st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
+
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.markdown(f"""
+    <div style="text-align:center; color:rgba(255,255,255,0.2); font-size:12px; padding:20px;">
+        ⚡ Powered by Streamlit &amp; { 'Yahoo Finance (Live)' if data['data_source'] == 'real' else 'Simulated Data' }<br>
+        Max Sharpe + Value Blend Strategy (v4) • Backtest Faithful<br>
+        Data Source: {'✅ LIVE' if data['data_source'] == 'real' else '⚠️ SIMULATED'}
+    </div>
+    """, unsafe_allow_html=True)
