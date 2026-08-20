@@ -1,6 +1,6 @@
 # ============================================
-# MARKET CONDITION DASHBOARD - WITH S6 SIGNAL
-# Complete working version - ALL SYNTAX ERRORS FIXED
+# MARKET CONDITION DASHBOARD - WITH S6 EXECUTION MATRIX
+# Complete working version with ETF execution table
 # ============================================
 
 import streamlit as st
@@ -186,6 +186,53 @@ st.markdown("""
         line-height: 1.8;
     }
     
+    .execution-table {
+        background: rgba(255,255,255,0.05);
+        border-radius: 15px;
+        padding: 20px;
+        border: 1px solid rgba(255,255,255,0.08);
+        overflow-x: auto;
+    }
+    
+    .execution-table table {
+        width: 100%;
+        border-collapse: collapse;
+        color: rgba(255,255,255,0.9);
+        font-size: 13px;
+    }
+    
+    .execution-table th {
+        background: rgba(255,255,255,0.1);
+        padding: 10px 12px;
+        text-align: left;
+        font-weight: 600;
+        color: rgba(255,255,255,0.7);
+        border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+    
+    .execution-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    
+    .execution-table .highlight {
+        color: #2ecc71;
+        font-weight: 600;
+    }
+    
+    .signal-tag {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .tag-qqq { background: rgba(108,92,231,0.3); color: #a29bfe; }
+    .tag-spy { background: rgba(0,206,201,0.3); color: #00cec9; }
+    .tag-gld { background: rgba(243,156,18,0.3); color: #fdcb6e; }
+    .tag-bil { background: rgba(9,132,227,0.3); color: #74b9ff; }
+    
     .regime-icon {
         font-size: 64px;
     }
@@ -221,6 +268,69 @@ st.markdown("""
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.markdown('<h1 class="main-title" style="text-align:center;">📈 Market Dashboard</h1>', unsafe_allow_html=True)
+
+# ============================================
+# ETF CONFIGURATION
+# ============================================
+
+ETF_CONFIG = {
+    'QQQ': {
+        'name': 'Nasdaq-100 (Tech)',
+        'ticker': 'CNDX',
+        'isin': 'IE00B53SZB19',
+        'ter': '0.30%',
+        'price': 1688.00,
+        'exchange': 'LSE',
+        'currency': 'USD',
+        'description': 'iShares Nasdaq 100 UCITS ETF (Acc)',
+        'signal': 'Calm Bull',
+        'condition': 'SPY > SMA200 & VIX < 20',
+        'tag': 'tag-qqq'
+    },
+    'SPY': {
+        'name': 'S&P 500 (Core)',
+        'ticker': 'CSPX',
+        'isin': 'IE00B5BMR087',
+        'ter': '0.07%',
+        'price': 830.56,
+        'exchange': 'LSE',
+        'currency': 'USD',
+        'description': 'iShares Core S&P 500 UCITS ETF (Acc)',
+        'signal': 'Elevated Bull',
+        'condition': 'SPY > SMA200 & 20 ≤ VIX < 30',
+        'tag': 'tag-spy'
+    },
+    'GLD': {
+        'name': 'Physical Gold',
+        'ticker': 'IGLN',
+        'isin': 'IE00B4ND3602',
+        'ter': '0.12%',
+        'price': 86.97,
+        'exchange': 'LSE',
+        'currency': 'USD',
+        'description': 'iShares Physical Gold ETC',
+        'signal': 'Defensive (Gold)',
+        'condition': 'GLD 60d Momentum > 0',
+        'tag': 'tag-gld'
+    },
+    'BIL': {
+        'name': 'Cash / T-Bills',
+        'ticker': 'IB01',
+        'isin': 'IE00BGSF1X88',
+        'ter': '0.07%',
+        'price': 121.60,
+        'exchange': 'LSE',
+        'currency': 'USD',
+        'description': 'iShares $ Treasury 0-1yr UCITS ETF (Acc)',
+        'signal': 'Defensive (Cash)',
+        'condition': 'GLD 60d Momentum ≤ 0',
+        'tag': 'tag-bil'
+    }
+}
+
+def get_etf_config(s6_target):
+    """Get ETF configuration for S6 target"""
+    return ETF_CONFIG.get(s6_target, None)
 
 # ============================================
 # DATA FETCHING
@@ -266,26 +376,26 @@ def fetch_market_data():
         if current_vix >= 30 or not is_above_sma200:
             if current_gld_mom > 0:
                 s6_target = "GLD"
-                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) -> Gold momentum positive ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum positive ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#f39c12"
                 s6_class = "signal-gld"
                 s6_emoji = "🪙"
             else:
                 s6_target = "BIL"
-                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) -> Gold momentum negative ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum negative ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#0984e3"
                 s6_class = "signal-bil"
                 s6_emoji = "🏦"
         else:
             if current_vix < 20:
                 s6_target = "QQQ"
-                s6_reason = "Calm Bull (SPY > 200 SMA, VIX < 20) -> Tech Equity"
+                s6_reason = f"Calm Bull (SPY > 200 SMA, VIX < 20) → Tech Equity"
                 s6_color = "#6c5ce7"
                 s6_class = "signal-qqq"
                 s6_emoji = "🚀"
             else:
                 s6_target = "SPY"
-                s6_reason = "Moderate Bull (SPY > 200 SMA, 20 <= VIX < 30) -> Broad Equity"
+                s6_reason = f"Elevated Bull (SPY > 200 SMA, 20 ≤ VIX < 30) → Broad Equity"
                 s6_color = "#00cec9"
                 s6_class = "regime-bull"
                 s6_emoji = "🐂"
@@ -385,7 +495,7 @@ st.markdown(f"""
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# TWO COLUMN LAYOUT
+# TWO COLUMN LAYOUT: REGIME + S6 DETAILS
 # ============================================
 
 col1, col2 = st.columns(2)
@@ -404,6 +514,9 @@ with col1:
     """, unsafe_allow_html=True)
 
 with col2:
+    # Get ETF config for current target
+    etf = get_etf_config(data['s6_target'])
+    
     st.markdown(f"""
     <div style="background:rgba(255,255,255,0.05); border-radius:15px; padding:20px; border:1px solid rgba(255,255,255,0.08); height:100%;">
         <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 S6 Signal Details</div>
@@ -431,6 +544,14 @@ with col2:
                 SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
             </span>
         </div>
+        {f'''
+        <div style="margin-top:10px; padding:10px; background:rgba({'' if data['s6_target'] == 'QQQ' else '243,156,18'},0.1); border-radius:8px; text-align:center; border:1px solid {data['s6_color']};">
+            <div style="font-size:12px; color:rgba(255,255,255,0.4);">ETF to Execute</div>
+            <div style="font-size:22px; font-weight:700; color:{data['s6_color']};">{etf['ticker']}</div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.6);">{etf['name']}</div>
+            <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']}</div>
+        </div>
+        ''' if etf else ''}
     </div>
     """, unsafe_allow_html=True)
 
@@ -456,11 +577,106 @@ with col3:
 with col4:
     st.metric("🎯 S6 Target", data['s6_target'])
 
+st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
+
+# ============================================
+# EXECUTION MATRIX TABLE
+# ============================================
+
+st.markdown("""
+<div class="strategy-description">
+    <h3 style="color:white; margin-top:0;">📋 Cleaned Execution Matrix</h3>
+    <p style="color:rgba(255,255,255,0.7); font-size:14px;">
+        <strong>Key Operational Observations:</strong>
+    </p>
+    <ul style="color:rgba(255,255,255,0.7); font-size:13px;">
+        <li><strong>Acc (Accumulating) Advantage:</strong> All four selections automatically reinvest dividends/yields. In Germany, this streamlines tax reporting under the <em>Vorabpauschale</em> rules and eliminates manual cash reinvestment overhead.</li>
+        <li><strong>TER / Cost Efficiency:</strong> An average Total Expense Ratio under 0.15% matches institutional pricing with near-zero drag.</li>
+        <li><strong>LSE USD Liquidity:</strong> The LSE listings trade in USD directly during European market hours.</li>
+    </ul>
+</div>
+""", unsafe_allow_html=True)
+
+# Build the execution table
+table_html = """
+<div class="execution-table">
+    <table>
+        <thead>
+            <tr>
+                <th>Strategy Signal</th>
+                <th>Target Asset</th>
+                <th>European UCITS ETF</th>
+                <th>Ticker (IBKR / LSE)</th>
+                <th>Currency</th>
+                <th>ISIN</th>
+                <th>TER</th>
+                <th>Role in Strategy 6</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+
+for target, config in ETF_CONFIG.items():
+    # Determine the condition text
+    if target == 'QQQ':
+        condition = 'Calm Bull (SPY > SMA200 & VIX < 20)'
+    elif target == 'SPY':
+        condition = 'Elevated Bull (SPY > SMA200 & 20 ≤ VIX < 30)'
+    elif target == 'GLD':
+        condition = 'Defensive Regime (GLD 60d Mom > 0)'
+    else:
+        condition = 'Defensive Regime (GLD 60d Mom ≤ 0)'
+    
+    # Highlight current target
+    highlight = ' style="background:rgba(46,204,113,0.15);"' if target == data['s6_target'] else ''
+    
+    table_html += f"""
+        <tr{highlight}>
+            <td><span class="signal-tag {config['tag']}">{target}</span></td>
+            <td><strong>{config['name']}</strong></td>
+            <td>{config['description']}</td>
+            <td><strong style="color:{data['s6_color'] if target == data['s6_target'] else 'white'};">{config['ticker']}</strong></td>
+            <td>{config['currency']}</td>
+            <td style="font-size:11px; color:rgba(255,255,255,0.6);">{config['isin']}</td>
+            <td style="color:{'#2ecc71' if target == data['s6_target'] else 'white'};">
+                {config['ter']}
+                {'' if target != data['s6_target'] else ' ✅'}
+            </td>
+            <td style="font-size:12px;">{condition}</td>
+        </tr>
+    """
+
+table_html += """
+        </tbody>
+    </table>
+</div>
+"""
+
+st.markdown(table_html, unsafe_allow_html=True)
+
+# ============================================
+# EXECUTION RULES
+# ============================================
+
+st.markdown("""
+<div class="strategy-description" style="margin-top:15px;">
+    <h4 style="color:#6c5ce7; margin-top:0;">⏰ Execution Rule on IBKR</h4>
+    <div style="background:rgba(108,92,231,0.1); border-left:3px solid #6c5ce7; padding:15px; margin:10px 0; border-radius:5px;">
+        <p style="color:rgba(255,255,255,0.9); margin:0;">
+            <strong>Execution Window:</strong> Place your trades between <strong>15:30 and 17:30 CET</strong> 
+            (09:30 to 11:30 EST). This window covers the simultaneous open of the London Stock Exchange and the 
+            New York market, ensuring maximum market-maker liquidity and penny-wide spreads on all four tickers.
+        </p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
+
 # ============================================
 # CHARTS
 # ============================================
 
-st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 st.markdown("### 📊 Market Charts")
 
 fig = make_subplots(
@@ -502,74 +718,4 @@ s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
 for i in range(200, len(data['spy_hist'])):
     spy_val = data['spy_hist'].iloc[i]
     sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
-    vix_val = data['vix_hist'].iloc[i] if i < len(data['vix_hist']) else 20
-    if pd.isna(sma_val) or pd.isna(vix_val):
-        continue
-    if vix_val >= 30 or spy_val < sma_val:
-        s6_exposure.iloc[i] = 0.0
-
-fig.add_trace(go.Scatter(x=s6_exposure.index, y=s6_exposure, name="S6 Target Exposure", line=dict(color='#6c5ce7', width=2), fill='tozeroy', fillcolor='rgba(108,92,231,0.2)'), row=3, col=1)
-fig.add_hline(y=1.0, line_dash="dot", line_color="#2ecc71", annotation_text="100%", row=3, col=1)
-fig.add_hline(y=0.0, line_dash="dot", line_color="#e74c3c", annotation_text="0% (Cash)", row=3, col=1)
-
-# 6. BIL
-fig.add_trace(go.Scatter(x=data['bil_hist'].index, y=data['bil_hist'], name="BIL (Cash)", line=dict(color='#0984e3', width=2)), row=3, col=2)
-
-fig.update_layout(height=900, showlegend=True, template="plotly_dark", hovermode="x unified", 
-                  paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(255,255,255,0.05)',
-                  font=dict(color='white'), legend=dict(bgcolor='rgba(0,0,0,0.3)'))
-st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-# ============================================
-# SIDEBAR
-# ============================================
-
-with st.sidebar:
-    st.markdown("### 📋 Strategy Dashboard")
-    st.markdown("---")
-    
-    st.markdown(f"""
-    <div style="text-align:center; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid {data['s6_color']};">
-        <div style="font-size:36px;">{data['s6_emoji']}</div>
-        <div style="font-size:20px; font-weight:700; color:{data['s6_color']};">{data['s6_target']}</div>
-        <div style="font-size:12px; color:rgba(255,255,255,0.7);">{data['s6_reason'][:50]}...</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.markdown("#### 🔍 Current Snapshot")
-    st.write(f"**SPY:** ${data['spy_close']:.2f}")
-    st.write(f"**QQQ:** ${data['qqq_close']:.2f}")
-    st.write(f"**GLD:** ${data['gld_close']:.2f}")
-    st.write(f"**VIX:** {data['vix_close']:.1f}")
-    
-    st.markdown("---")
-    st.markdown("#### 📋 S6 Rules")
-    st.markdown("""
-    | Condition | Target |
-    |-----------|--------|
-    | VIX >= 30 OR SPY < 200 SMA | **DEFENSIVE** |
-    | -> GLD Momentum > 0 | 🪙 GLD |
-    | -> GLD Momentum <= 0 | 🏦 BIL |
-    | SPY > 200 SMA + VIX < 20 | 🚀 QQQ |
-    | SPY > 200 SMA + 20 <= VIX < 30 | 🐂 SPY |
-    """)
-    
-    st.markdown("---")
-    st.markdown("#### 📊 Status")
-    if data['is_above_sma200']:
-        st.success("🟢 SPY: Above 200-day SMA")
-    else:
-        st.error("🔴 SPY: Below 200-day SMA")
-    
-    if data['vix_close'] <= 20:
-        st.success(f"🟢 VIX: {data['vix_close']:.1f} (Calm)")
-    elif data['vix_close'] <= 30:
-        st.warning(f"🟡 VIX: {data['vix_close']:.1f} (Elevated)")
-    else:
-        st.error(f"🔴 VIX: {data['vix_close']:.1f} (Extreme)")
-    
-    st.markdown("---")
-    if st.button("🔄 Refresh Data", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+    vix_val = data['vix_hist'].iloc[i] if i < len(data['
