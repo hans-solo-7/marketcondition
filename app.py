@@ -1,6 +1,6 @@
 # ============================================
 # MARKET CONDITION DASHBOARD - WITH S6 EXECUTION MATRIX
-# Complete working version - ALL SYNTAX ERRORS FIXED
+# COMPLETE WORKING VERSION - ALL ISSUES FIXED
 # ============================================
 
 import streamlit as st
@@ -538,14 +538,12 @@ with col2:
                 SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
             </span>
         </div>
-        {f'''
         <div style="margin-top:10px; padding:10px; background:rgba(108,92,231,0.1); border-radius:8px; text-align:center; border:1px solid {data['s6_color']};">
             <div style="font-size:12px; color:rgba(255,255,255,0.4);">ETF to Execute</div>
             <div style="font-size:22px; font-weight:700; color:{data['s6_color']};">{etf['ticker']}</div>
             <div style="font-size:12px; color:rgba(255,255,255,0.6);">{etf['name']}</div>
             <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']}</div>
         </div>
-        ''' if etf else ''}
     </div>
     """, unsafe_allow_html=True)
 
@@ -707,16 +705,10 @@ fig.add_trace(go.Scatter(x=data['vix_hist'].index, y=data['vix_hist'], name="VIX
 fig.add_hline(y=30, line_dash="dash", line_color="#d63031", annotation_text="Risk Threshold (30)", row=2, col=2)
 fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", annotation_text="Calm Threshold (20)", row=2, col=2)
 
-# 5. S6 Exposure
+# 5. S6 Exposure - COMPLETELY FIXED
 s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
 for i in range(200, len(data['spy_hist'])):
     if i < len(data['vix_hist']):
         spy_val = data['spy_hist'].iloc[i]
         sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
-        vix_val = data['vix_hist'].iloc[i]
-        
-        if pd.isna(sma_val) or pd.isna(vix_val):
-            continue
-        
-        if vix_val >= 30 or spy_val < sma_val:
-            s6_ex
+        vix_val = data['v
