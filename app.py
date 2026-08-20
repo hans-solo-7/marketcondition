@@ -1,6 +1,6 @@
 # ============================================
 # MARKET CONDITION DASHBOARD - WITH S6 SIGNAL
-# Includes Strategy 6 (Offensive Regimes) logic
+# Complete working version with all fixes
 # ============================================
 
 import streamlit as st
@@ -229,6 +229,19 @@ st.markdown("""
         border-radius: 10px;
         display: inline-block;
     }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    
+    .stat-box {
+        background: rgba(255,255,255,0.05);
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -247,8 +260,6 @@ with col2:
 @st.cache_data(ttl=1800)
 def fetch_market_data():
     try:
-        import yfinance as yf
-        
         # Fetch 2 years of data for S6 signal
         tickers = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
         df = yf.download(tickers, period="2y", interval="1d", progress=False)
@@ -293,13 +304,13 @@ def fetch_market_data():
             # Defensive Regime
             if current_gld_mom > 0:
                 s6_target = "GLD"
-                s6_reason = f"Defensive Regime (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum positive ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive Regime (VIX >= 30 or SPY < 200 SMA) → Gold momentum positive ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#f39c12"
                 s6_class = "signal-gld"
                 s6_emoji = "🪙"
             else:
                 s6_target = "BIL (or SGOV)"
-                s6_reason = f"Defensive Regime (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum negative/flat ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive Regime (VIX >= 30 or SPY < 200 SMA) → Gold momentum negative/flat ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#0984e3"
                 s6_class = "signal-bil"
                 s6_emoji = "🏦"
@@ -313,7 +324,7 @@ def fetch_market_data():
                 s6_emoji = "🚀"
             else:
                 s6_target = "SPY"
-                s6_reason = f"Moderate Bull (SPY > 200 SMA and 20.00 ≤ VIX < 30.00) → 100% Broad Equity"
+                s6_reason = f"Moderate Bull (SPY > 200 SMA and 20.00 <= VIX < 30.00) → 100% Broad Equity"
                 s6_color = "#00cec9"
                 s6_class = "regime-bull"
                 s6_emoji = "🐂"
@@ -326,7 +337,7 @@ def fetch_market_data():
             signal_color = "#e74c3c"
             signal_label = "BEAR MARKET"
             signal_desc = "S&P 500 below 200-day SMA"
-            action_text = "🔴 SELL ALL - Exit all positions immediately"
+            action_text = "SELL ALL - Exit all positions immediately"
             regime_class = "regime-bear"
         elif current_vix > 30:
             target = 50
@@ -335,7 +346,7 @@ def fetch_market_data():
             signal_color = "#f39c12"
             signal_label = "CAUTION"
             signal_desc = "VIX above 30 (elevated volatility)"
-            action_text = "🟠 REDUCE TO 50% - Sell half of positions"
+            action_text = "REDUCE TO 50% - Sell half of positions"
             regime_class = "regime-neutral"
         else:
             target = 100
@@ -344,7 +355,7 @@ def fetch_market_data():
             signal_color = "#2ecc71"
             signal_label = "BULL MARKET"
             signal_desc = "All indicators normal"
-            action_text = "🟢 HOLD 100% - Continue holding positions"
+            action_text = "HOLD 100% - Continue holding positions"
             regime_class = "regime-bull"
         
         return {
@@ -361,6 +372,7 @@ def fetch_market_data():
             'qqq_hist': closes['QQQ'],
             'gld_hist': closes['GLD'],
             'vix_hist': closes['^VIX'],
+            'bil_hist': closes['BIL'] if 'BIL' in closes.columns else pd.Series(1.0, index=closes.index),
             # S6 Signal
             's6_target': s6_target,
             's6_reason': s6_reason,
@@ -385,7 +397,7 @@ def fetch_market_data():
         st.error(f"Data fetch error: {e}")
         return None
 
-with st.spinner("🔮 Loading market data..."):
+with st.spinner("Loading market data..."):
     data = fetch_market_data()
 
 if data is None:
@@ -397,9 +409,9 @@ if data is None:
 # ============================================
 
 if data['data_source'] == 'real':
-    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-real">✅ LIVE DATA</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-real">LIVE DATA</span></div>', unsafe_allow_html=True)
 else:
-    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-simulated">⚠️ SIMULATED DATA</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-simulated">SIMULATED DATA</span></div>', unsafe_allow_html=True)
 
 st.markdown(f'<p style="text-align:center; color: rgba(255,255,255,0.4); font-size:13px;">Last updated: {data["date"].strftime("%Y-%m-%d %H:%M")} ET</p>', unsafe_allow_html=True)
 
@@ -412,7 +424,7 @@ st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 st.markdown(f"""
 <div class="{data['s6_class']}">
     <div style="font-size:48px;">{data['s6_emoji']}</div>
-    <div style="font-size:28px; font-weight:700; letter-spacing:1px;">🎯 TARGET: {data['s6_target']}</div>
+    <div style="font-size:28px; font-weight:700; letter-spacing:1px;">TARGET: {data['s6_target']}</div>
     <div style="font-size:16px; opacity:0.9; margin-top:8px;">{data['s6_reason']}</div>
     <div style="font-size:14px; opacity:0.7; margin-top:8px;">
         SPY: ${data['spy_close']:.2f} | 200 SMA: ${data['sma200']:.2f} | 50 EMA: ${data['ema50']:.2f} | VIX: {data['vix_close']:.1f}
@@ -437,13 +449,14 @@ with col1:
         <div style="font-size:16px; font-weight:600; margin-top:8px; background:rgba(0,0,0,0.2); padding:8px 16px; border-radius:8px; display:inline-block;">
             Exposure: {data['target']}%
         </div>
+        <div style="font-size:13px; margin-top:5px; opacity:0.6;">{data['action_text']}</div>
     </div>
     """, unsafe_allow_html=True)
 
 with col2:
     st.markdown(f"""
     <div style="background:rgba(255,255,255,0.05); border-radius:15px; padding:20px; border:1px solid rgba(255,255,255,0.08); height:100%;">
-        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 S6 Signal Details</div>
+        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">S6 Signal Details</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
                 <div style="font-size:18px; font-weight:700; color:#00cec9;">${data['spy_close']:.2f}</div>
@@ -464,8 +477,8 @@ with col2:
         </div>
         <div style="margin-top:10px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; text-align:center;">
             <span style="color:rgba(255,255,255,0.3); font-size:12px;">
-                SPY above 200 SMA: {'✅' if data['is_above_sma200'] else '❌'} | 
-                SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
+                SPY above 200 SMA: {'Yes' if data['is_above_sma200'] else 'No'} | 
+                SPY above 50 EMA: {'Yes' if data['is_above_ema50'] else 'No'}
             </span>
         </div>
     </div>
@@ -484,7 +497,7 @@ with col1:
     <div class="metric-card">
         <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">S&P 500 (SPY)</div>
         <div style="font-size:32px; font-weight:700; color:white;">${data['spy_close']:.2f}</div>
-        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">{'🟢 Above' if data['is_above_sma200'] else '🔴 Below'} 200 SMA</span></div>
+        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">{'Above' if data['is_above_sma200'] else 'Below'} 200 SMA</span></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -509,7 +522,7 @@ with col3:
 with col4:
     st.markdown(f"""
     <div class="metric-card">
-        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">🎯 S6 Target</div>
+        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">S6 Target</div>
         <div style="font-size:32px; font-weight:700; color:{data['s6_color']};">{data['s6_target']}</div>
         <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">{data['s6_emoji']} Strategy 6 Signal</span></div>
     </div>
@@ -520,7 +533,7 @@ with col4:
 # ============================================
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
-st.markdown("### 📊 Market Charts")
+st.markdown("### Market Charts")
 
 fig = make_subplots(
     rows=3, cols=2,
@@ -596,7 +609,6 @@ fig.add_trace(
     row=2, col=1
 )
 
-# GLD Momentum (60-day)
 gld_mom_series = data['gld_hist'].pct_change(60) * 100
 fig.add_trace(
     go.Scatter(
@@ -629,10 +641,11 @@ fig.add_hline(y=30, line_dash="dash", line_color="#d63031",
 fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", 
               annotation_text="Calm Threshold (20)", row=2, col=2)
 
-# 5. S6 Target Exposure (Simplified visualization)
-# Recreate S6 exposure over time
+# 5. S6 Target Exposure
 s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
 for i in range(len(data['spy_hist'])):
+    if i < 200:
+        continue
     date = data['spy_hist'].index[i]
     spy_val = data['spy_hist'].iloc[i]
     sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
@@ -642,13 +655,12 @@ for i in range(len(data['spy_hist'])):
     if pd.isna(sma_val) or pd.isna(vix_val):
         continue
     
-    # Simplified S6 logic for visualization
     if vix_val >= 30 or spy_val < sma_val:
         s6_exposure.iloc[i] = 0.0
     elif vix_val < 20:
-        s6_exposure.iloc[i] = 1.0  # QQQ exposure (simplified)
+        s6_exposure.iloc[i] = 1.0
     else:
-        s6_exposure.iloc[i] = 1.0  # SPY exposure
+        s6_exposure.iloc[i] = 1.0
 
 fig.add_trace(
     go.Scatter(
@@ -672,8 +684,8 @@ fig.add_hline(y=0.0, line_dash="dot", line_color="#e74c3c",
 # 6. BIL Chart
 fig.add_trace(
     go.Scatter(
-        x=data['bil_hist'].index if 'bil_hist' in data else data['spy_hist'].index,
-        y=data['bil_hist'] if 'bil_hist' in data else pd.Series(1.0, index=data['spy_hist'].index),
+        x=data['bil_hist'].index,
+        y=data['bil_hist'],
         name="BIL (Cash)",
         line=dict(color='#0984e3', width=2),
         fill='tozeroy',
@@ -703,7 +715,7 @@ st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 # ============================================
 
 with st.sidebar:
-    st.markdown("### 📋 Strategy Dashboard")
+    st.markdown("### Strategy Dashboard")
     
     st.markdown("---")
     
@@ -711,13 +723,13 @@ with st.sidebar:
     <div style="text-align:center; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid {data['s6_color']};">
         <div style="font-size:36px;">{data['s6_emoji']}</div>
         <div style="font-size:20px; font-weight:700; color:{data['s6_color']};">{data['s6_target']}</div>
-        <div style="font-size:12px; color:rgba(255,255,255,0.7);">{data['s6_reason'][:50]}...</div>
+        <div style="font-size:12px; color:rgba(255,255,255,0.7);">{data['s6_reason'][:60]}...</div>
     </div>
     """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    st.markdown("#### 🔍 Current Snapshot")
+    st.markdown("#### Current Snapshot")
     st.write(f"**SPY:** ${data['spy_close']:.2f}")
     st.write(f"**QQQ:** ${data['qqq_close']:.2f}")
     st.write(f"**GLD:** ${data['gld_close']:.2f}")
@@ -725,26 +737,28 @@ with st.sidebar:
     
     st.markdown("---")
     
-    st.markdown("#### 📋 S6 Rules")
+    st.markdown("#### S6 Rules")
     st.markdown("""
     | Condition | Target |
     |-----------|--------|
-    | VIX ≥ 30 OR SPY < 200 SMA | 🔴 **DEFENSIVE** |
-    | → GLD Momentum > 0 | 🪙 **GLD** |
-    | → GLD Momentum ≤ 0 | 🏦 **BIL** |
-    | SPY > 200 SMA + VIX < 20 | 🚀 **QQQ** |
-    | SPY > 200 SMA + 20 ≤ VIX < 30 | 🐂 **SPY** |
+    | VIX >= 30 OR SPY < 200 SMA | **DEFENSIVE** |
+    | -> GLD Momentum > 0 | GLD |
+    | -> GLD Momentum <= 0 | BIL |
+    | SPY > 200 SMA + VIX < 20 | QQQ |
+    | SPY > 200 SMA + 20 <= VIX < 30 | SPY |
     """)
     
     st.markdown("---")
     
-    st.markdown("#### 📊 Status")
+    st.markdown("#### Status")
     if data['is_above_sma200']:
-        st.success("🟢 SPY: Above 200-day SMA")
+        st.success("SPY: Above 200-day SMA")
     else:
-        st.error("🔴 SPY: Below 200-day SMA")
+        st.error("SPY: Below 200-day SMA")
     
     if data['vix_close'] <= 20:
-        st.success(f"🟢 VIX: {data['vix_close']:.1f} (Calm)")
+        st.success(f"VIX: {data['vix_close']:.1f} (Calm)")
     elif data['vix_close'] <= 30:
-        st.warning(f"
+        st.warning(f"VIX: {data['vix_close']:.1f} (Elevated)")
+    else:
+        st.error(f"VIX: {data['v
