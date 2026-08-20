@@ -593,7 +593,7 @@ with st.sidebar:
         st.rerun()
 
 # ============================================
-# STRATEGY OVERVIEW & HEAD-TO-HEAD BENCHMARK
+# STRATEGY OVERVIEW & HEAD-TO-HEAD BENCHMARK (FULLY FIXED)
 # ============================================
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
@@ -680,55 +680,55 @@ st.markdown("""
                 <td><strong>Total Return</strong></td>
                 <td>748.0%</td>
                 <td>341.6%</td>
-                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
             </tr>
             <tr>
                 <td><strong>Annualized Return (CAGR)</strong></td>
                 <td>15.4%</td>
                 <td>10.4%</td>
-                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
             </tr>
             <tr>
                 <td><strong>Annualized Volatility</strong></td>
                 <td>16.9%</td>
                 <td>11.1%</td>
-                <td><span class="winner">🏆 Tactical Overlay</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
             </tr>
             <tr>
                 <td><strong>Max Drawdown</strong></td>
                 <td style="color:#e74c3c;">-33.7%</td>
                 <td style="color:#2ecc71;">-21.4%</td>
-                <td><span class="winner">🏆 Tactical Overlay</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
             </tr>
             <tr>
                 <td><strong>Sharpe Ratio (rf=2%)</strong></td>
                 <td>0.81</td>
                 <td>0.77</td>
-                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
             </tr>
             <tr>
                 <td><strong>Sortino Ratio</strong></td>
                 <td>1.01</td>
                 <td>0.88</td>
-                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
             </tr>
             <tr>
                 <td><strong>Calmar Ratio</strong></td>
                 <td>0.46</td>
                 <td>0.49</td>
-                <td><span class="winner">🏆 Tactical Overlay</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
             </tr>
             <tr>
                 <td><strong>Win Rate (Active Days)</strong></td>
                 <td>55.4%</td>
                 <td>54.9%</td>
-                <td><span class="winner">🏆 Buy &amp; Hold</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
             </tr>
             <tr>
                 <td><strong>Max Consecutive Losses</strong></td>
                 <td>8</td>
                 <td>7</td>
-                <td><span class="winner">🏆 Tactical Overlay</span></td>
+                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
             </tr>
         </tbody>
     </table>
@@ -736,7 +736,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================
-# WHY USE TACTICAL OVERLAY - EXPLANATION
+# WHY USE TACTICAL OVERLAY - EXPLANATION (FIXED)
 # ============================================
 
 st.markdown("""
@@ -748,7 +748,7 @@ st.markdown("""
     </p>
     
     <div style="background:rgba(46,204,113,0.1); border-left:3px solid #2ecc71; padding:15px; margin:15px 0; border-radius:5px;">
-        <p style="color:rgba(255,255,255,0.9);">
+        <p style="color:rgba(255,255,255,0.9); margin:0;">
             <strong>🔑 Key Insight:</strong> The Tactical Overlay cuts maximum drawdown <strong>from -33.7% to -21.4%</strong> 
             — a <strong>36% reduction</strong> in peak-to-trough loss.
         </p>
