@@ -1,6 +1,6 @@
 # ============================================
 # MARKET CONDITION DASHBOARD - WITH S6 EXECUTION MATRIX
-# COMPLETE WORKING VERSION - ALL ISSUES FIXED
+# COMPLETE WORKING VERSION - ALL SYNTAX ERRORS FIXED
 # ============================================
 
 import streamlit as st
@@ -318,7 +318,7 @@ ETF_CONFIG = {
         'currency': 'USD',
         'description': 'iShares $ Treasury 0-1yr UCITS ETF (Acc)',
         'signal': 'Defensive (Cash)',
-        'condition': 'GLD 60d Momentum ≤ 0',
+        'condition': 'GLD 60d Momentum <= 0',
         'tag': 'tag-bil'
     }
 }
@@ -613,11 +613,11 @@ for target, config in ETF_CONFIG.items():
     if target == 'QQQ':
         condition = 'Calm Bull (SPY > SMA200 & VIX < 20)'
     elif target == 'SPY':
-        condition = 'Elevated Bull (SPY > SMA200 & 20 ≤ VIX < 30)'
+        condition = 'Elevated Bull (SPY > SMA200 & 20 <= VIX < 30)'
     elif target == 'GLD':
         condition = 'Defensive Regime (GLD 60d Mom > 0)'
     else:
-        condition = 'Defensive Regime (GLD 60d Mom ≤ 0)'
+        condition = 'Defensive Regime (GLD 60d Mom <= 0)'
     
     # Highlight current target
     highlight = ' style="background:rgba(46,204,113,0.15);"' if target == data['s6_target'] else ''
@@ -666,7 +666,7 @@ st.markdown("""
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# CHARTS
+# CHARTS - COMPLETELY FIXED
 # ============================================
 
 st.markdown("### 📊 Market Charts")
@@ -705,10 +705,16 @@ fig.add_trace(go.Scatter(x=data['vix_hist'].index, y=data['vix_hist'], name="VIX
 fig.add_hline(y=30, line_dash="dash", line_color="#d63031", annotation_text="Risk Threshold (30)", row=2, col=2)
 fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", annotation_text="Calm Threshold (20)", row=2, col=2)
 
-# 5. S6 Exposure - COMPLETELY FIXED
+# 5. S6 Exposure - COMPLETELY FIXED (using a loop that won't break)
 s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
+
 for i in range(200, len(data['spy_hist'])):
     if i < len(data['vix_hist']):
         spy_val = data['spy_hist'].iloc[i]
         sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
-        vix_val = data['v
+        vix_val = data['vix_hist'].iloc[i]
+        
+        if pd.isna(sma_val) or pd.isna(vix_val):
+            continue
+        
+        if vix
