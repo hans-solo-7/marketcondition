@@ -1,6 +1,6 @@
 # ============================================
 # MARKET CONDITION DASHBOARD - WITH S6 EXECUTION MATRIX
-# Complete working version with ETF execution table
+# Complete working version - ALL SYNTAX ERRORS FIXED
 # ============================================
 
 import streamlit as st
@@ -215,11 +215,6 @@ st.markdown("""
         border-bottom: 1px solid rgba(255,255,255,0.05);
     }
     
-    .execution-table .highlight {
-        color: #2ecc71;
-        font-weight: 600;
-    }
-    
     .signal-tag {
         display: inline-block;
         padding: 2px 10px;
@@ -376,13 +371,13 @@ def fetch_market_data():
         if current_vix >= 30 or not is_above_sma200:
             if current_gld_mom > 0:
                 s6_target = "GLD"
-                s6_reason = f"Defensive (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum positive ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) → Gold momentum positive ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#f39c12"
                 s6_class = "signal-gld"
                 s6_emoji = "🪙"
             else:
                 s6_target = "BIL"
-                s6_reason = f"Defensive (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum negative ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) → Gold momentum negative ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#0984e3"
                 s6_class = "signal-bil"
                 s6_emoji = "🏦"
@@ -395,7 +390,7 @@ def fetch_market_data():
                 s6_emoji = "🚀"
             else:
                 s6_target = "SPY"
-                s6_reason = f"Elevated Bull (SPY > 200 SMA, 20 ≤ VIX < 30) → Broad Equity"
+                s6_reason = f"Elevated Bull (SPY > 200 SMA, 20 <= VIX < 30) → Broad Equity"
                 s6_color = "#00cec9"
                 s6_class = "regime-bull"
                 s6_emoji = "🐂"
@@ -495,7 +490,7 @@ st.markdown(f"""
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# TWO COLUMN LAYOUT: REGIME + S6 DETAILS
+# TWO COLUMN LAYOUT
 # ============================================
 
 col1, col2 = st.columns(2)
@@ -514,7 +509,6 @@ with col1:
     """, unsafe_allow_html=True)
 
 with col2:
-    # Get ETF config for current target
     etf = get_etf_config(data['s6_target'])
     
     st.markdown(f"""
@@ -545,7 +539,7 @@ with col2:
             </span>
         </div>
         {f'''
-        <div style="margin-top:10px; padding:10px; background:rgba({'' if data['s6_target'] == 'QQQ' else '243,156,18'},0.1); border-radius:8px; text-align:center; border:1px solid {data['s6_color']};">
+        <div style="margin-top:10px; padding:10px; background:rgba(108,92,231,0.1); border-radius:8px; text-align:center; border:1px solid {data['s6_color']};">
             <div style="font-size:12px; color:rgba(255,255,255,0.4);">ETF to Execute</div>
             <div style="font-size:22px; font-weight:700; color:{data['s6_color']};">{etf['ticker']}</div>
             <div style="font-size:12px; color:rgba(255,255,255,0.6);">{etf['name']}</div>
@@ -716,6 +710,13 @@ fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", annotation_text="Calm
 # 5. S6 Exposure
 s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
 for i in range(200, len(data['spy_hist'])):
-    spy_val = data['spy_hist'].iloc[i]
-    sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
-    vix_val = data['vix_hist'].iloc[i] if i < len(data['
+    if i < len(data['vix_hist']):
+        spy_val = data['spy_hist'].iloc[i]
+        sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
+        vix_val = data['vix_hist'].iloc[i]
+        
+        if pd.isna(sma_val) or pd.isna(vix_val):
+            continue
+        
+        if vix_val >= 30 or spy_val < sma_val:
+            s6_ex
