@@ -1,6 +1,6 @@
 # ============================================
 # MARKET CONDITION DASHBOARD - WITH S6 EXECUTION MATRIX
-# COMPLETE WORKING VERSION - ALL SYNTAX ERRORS FIXED
+# COMPLETE WORKING VERSION - FULLY FIXED
 # ============================================
 
 import streamlit as st
@@ -704,7 +704,7 @@ fig.add_trace(go.Scatter(x=data['vix_hist'].index, y=data['vix_hist'], name="VIX
 fig.add_hline(y=30, line_dash="dash", line_color="#d63031", annotation_text="Risk Threshold (30)", row=2, col=2)
 fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", annotation_text="Calm Threshold (20)", row=2, col=2)
 
-# 5. S6 Exposure - COMPLETELY REWRITTEN TO AVOID BREAKAGE
+# 5. S6 Exposure - COMPLETELY REWRITTEN
 s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
 
 for i in range(200, len(data['spy_hist'])):
@@ -714,3 +714,92 @@ for i in range(200, len(data['spy_hist'])):
         vix_val = data['vix_hist'].iloc[i]
         
         if pd.isna(sma_val) or pd.isna(vix_val):
+            continue
+        
+        if vix_val >= 30 or spy_val < sma_val:
+            s6_exposure.iloc[i] = 0.0
+        else:
+            s6_exposure.iloc[i] = 1.0
+
+fig.add_trace(go.Scatter(x=s6_exposure.index, y=s6_exposure, name="S6 Target Exposure", line=dict(color='#6c5ce7', width=2), fill='tozeroy', fillcolor='rgba(108,92,231,0.2)'), row=3, col=1)
+fig.add_hline(y=1.0, line_dash="dot", line_color="#2ecc71", annotation_text="100%", row=3, col=1)
+fig.add_hline(y=0.5, line_dash="dot", line_color="#f39c12", annotation_text="50%", row=3, col=1)
+fig.add_hline(y=0.0, line_dash="dot", line_color="#e74c3c", annotation_text="0% (Cash)", row=3, col=1)
+
+# 6. BIL
+fig.add_trace(go.Scatter(x=data['bil_hist'].index, y=data['bil_hist'], name="BIL (Cash)", line=dict(color='#0984e3', width=2)), row=3, col=2)
+
+fig.update_layout(
+    height=900,
+    showlegend=True,
+    template="plotly_dark",
+    hovermode="x unified",
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(255,255,255,0.05)',
+    font=dict(color='white'),
+    legend=dict(bgcolor='rgba(0,0,0,0.3)', bordercolor='rgba(255,255,255,0.1)', borderwidth=1)
+)
+
+fig.update_xaxes(showgrid=True, gridcolor='rgba(255,255,255,0.05)')
+fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.05)')
+
+st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+# ============================================
+# SIDEBAR
+# ============================================
+
+with st.sidebar:
+    st.markdown("### 📋 Strategy Dashboard")
+    
+    st.markdown("---")
+    
+    st.markdown(f"""
+    <div style="text-align:center; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid {data['s6_color']};">
+        <div style="font-size:36px;">{data['s6_emoji']}</div>
+        <div style="font-size:20px; font-weight:700; color:{data['s6_color']};">{data['s6_target']}</div>
+        <div style="font-size:12px; color:rgba(255,255,255,0.7);">{data['s6_reason'][:50]}...</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    st.markdown("#### 🔍 Current Snapshot")
+    st.write(f"**SPY:** ${data['spy_close']:.2f}")
+    st.write(f"**QQQ:** ${data['qqq_close']:.2f}")
+    st.write(f"**GLD:** ${data['gld_close']:.2f}")
+    st.write(f"**VIX:** {data['vix_close']:.1f}")
+    
+    st.markdown("---")
+    
+    st.markdown("#### 📋 S6 Rules")
+    st.markdown("""
+    | Condition | Target |
+    |-----------|--------|
+    | VIX >= 30 OR SPY < 200 SMA | **DEFENSIVE** |
+    | -> GLD Momentum > 0 | 🪙 GLD |
+    | -> GLD Momentum <= 0 | 🏦 BIL |
+    | SPY > 200 SMA + VIX < 20 | 🚀 QQQ |
+    | SPY > 200 SMA + 20 <= VIX < 30 | 🐂 SPY |
+    """)
+    
+    st.markdown("---")
+    
+    st.markdown("#### 📊 Status")
+    if data['is_above_sma200']:
+        st.success("🟢 SPY: Above 200-day SMA")
+    else:
+        st.error("🔴 SPY: Below 200-day SMA")
+    
+    if data['vix_close'] <= 20:
+        st.success(f"🟢 VIX: {data['vix_close']:.1f} (Calm)")
+    elif data['vix_close'] <= 30:
+        st.warning(f"🟡 VIX: {data['vix_close']:.1f} (Elevated)")
+    else:
+        st.error(f"🔴 VIX: {data['vix_close']:.1f} (Extreme)")
+    
+    st.markdown("---")
+    
+    if st.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
