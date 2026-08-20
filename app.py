@@ -571,7 +571,7 @@ with col4:
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# EXECUTION MATRIX TABLE
+# EXECUTION MATRIX TABLE - FULLY FIXED
 # ============================================
 
 st.markdown("""
@@ -588,7 +588,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Build the execution table
+# Build the execution table - COMPLETE VERSION
 table_html = """
 <div class="execution-table">
     <table>
@@ -644,7 +644,6 @@ table_html += """
 """
 
 st.markdown(table_html, unsafe_allow_html=True)
-
 # ============================================
 # EXECUTION RULES
 # ============================================
