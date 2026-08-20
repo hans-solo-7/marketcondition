@@ -1,6 +1,6 @@
 # ============================================
-# MARKET CONDITION DASHBOARD - WITH ORDER BOOK PLAN
-# Includes portfolio size input and execution plan
+# MARKET CONDITION DASHBOARD - S6 STRATEGY
+# Complete implementation with asymmetric re-entry logic
 # ============================================
 
 import streamlit as st
@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 # ============================================
 
 st.set_page_config(
-    page_title="Market Dashboard Pro",
+    page_title="S6 Market Dashboard",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -277,7 +277,7 @@ st.markdown("""
 
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    st.markdown('<h1 class="main-title" style="text-align:center;">📈 Market Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-title" style="text-align:center;">📈 S6 Market Dashboard</h1>', unsafe_allow_html=True)
 
 # ============================================
 # ETF CONFIGURATION
@@ -342,108 +342,13 @@ def get_etf_config(s6_target):
     return ETF_CONFIG.get(s6_target, None)
 
 # ============================================
-# ORDER BOOK PLAN GENERATOR
-# ============================================
-
-def generate_order_plan(target_etf, portfolio_size, current_holdings=None):
-    """
-    Generate order book plan based on target ETF and portfolio size.
-    
-    Parameters:
-    - target_etf: The ETF config dict
-    - portfolio_size: Total portfolio value in USD
-    - current_holdings: Dict of current holdings (ticker -> shares)
-    
-    Returns:
-    - Dict with order plan details
-    """
-    if target_etf is None:
-        return None
-    
-    # Default: assume we're starting from zero (no current holdings)
-    if current_holdings is None:
-        current_holdings = {}
-    
-    # Get target ETF details
-    ticker = target_etf['ticker']
-    price = target_etf['price']
-    name = target_etf['name']
-    currency = target_etf['currency']
-    ter = target_etf['ter']
-    isin = target_etf['isin']
-    exchange = target_etf['exchange']
-    
-    # Calculate target shares (use 100% of portfolio)
-    target_shares = portfolio_size / price
-    
-    # Get current shares (if any)
-    current_shares = current_holdings.get(ticker, 0)
-    
-    # Calculate difference
-    diff_shares = target_shares - current_shares
-    
-    # Determine action
-    if diff_shares > 0.01:
-        action = "BUY"
-        action_class = "action-buy"
-        shares_to_trade = diff_shares
-        estimated_cost = shares_to_trade * price
-    elif diff_shares < -0.01:
-        action = "SELL"
-        action_class = "action-sell"
-        shares_to_trade = abs(diff_shares)
-        estimated_cost = shares_to_trade * price
-    else:
-        action = "HOLD"
-        action_class = "action-hold"
-        shares_to_trade = 0
-        estimated_cost = 0
-    
-    return {
-        'ticker': ticker,
-        'name': name,
-        'price': price,
-        'currency': currency,
-        'ter': ter,
-        'isin': isin,
-        'exchange': exchange,
-        'current_shares': current_shares,
-        'target_shares': target_shares,
-        'shares_to_trade': shares_to_trade,
-        'action': action,
-        'action_class': action_class,
-        'estimated_cost': estimated_cost,
-        'portfolio_size': portfolio_size,
-        'target_allocation': portfolio_size
-    }
-
-def generate_full_order_book(s6_target, portfolio_size, current_holdings=None):
-    """
-    Generate full order book plan for all ETFs based on S6 target.
-    Only the target ETF gets the full allocation, others get 0.
-    """
-    order_book = []
-    
-    # Get the target ETF config
-    target_etf = get_etf_config(s6_target)
-    
-    if target_etf is None:
-        return []
-    
-    # Generate plan for the target ETF (100% allocation)
-    plan = generate_order_plan(target_etf, portfolio_size, current_holdings)
-    if plan:
-        order_book.append(plan)
-    
-    return order_book
-
-# ============================================
-# DATA FETCHING
+# DATA FETCHING WITH ASYMMETRIC RE-ENTRY LOGIC
 # ============================================
 
 @st.cache_data(ttl=1800)
 def fetch_market_data():
     try:
+        # Fetch US Signal Tickers
         tickers = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
         df = yf.download(tickers, period="2y", interval="1d", progress=False)
         
@@ -474,38 +379,69 @@ def fetch_market_data():
         current_gld_mom = float(gld_mom.iloc[-1])
         last_date = closes.index[-1]
         
+        # ========================================
+        # ASYMMETRIC RE-ENTRY STATE MACHINE (S5)
+        # ========================================
+        # EXIT:  SPY < 200 SMA OR VIX >= 30
+        # RE-ENTER: SPY > 50 EMA AND VIX < 25
+        # ========================================
+        in_equity_state = 1
+        for i in range(200, len(spy)):
+            p = spy.iloc[i]
+            s200 = sma200_spy.iloc[i]
+            e50 = ema50_spy.iloc[i]
+            v = vix.iloc[i]
+            
+            if pd.isna(s200) or pd.isna(e50):
+                continue
+                
+            if in_equity_state == 1:
+                # EXIT: SPY below 200 SMA OR VIX >= 30
+                if p < s200 or v >= 30:
+                    in_equity_state = 0
+            else:
+                # RE-ENTER: SPY above 50 EMA AND VIX < 25
+                if p > e50 and v < 25:
+                    in_equity_state = 1
+        
         is_above_sma200 = current_spy > current_sma200
         is_above_ema50 = current_spy > current_ema50
         
-        # S6 Signal
-        if current_vix >= 30 or not is_above_sma200:
+        # ========================================
+        # S6 SIGNAL ALLOCATION LOGIC
+        # ========================================
+        if in_equity_state == 0:
+            # Defensive Regime
             if current_gld_mom > 0:
                 s6_target = "GLD"
-                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) -> Gold momentum positive ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive State active -> Gold 60d momentum positive ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#f39c12"
                 s6_class = "signal-gld"
                 s6_emoji = "🪙"
             else:
                 s6_target = "BIL"
-                s6_reason = f"Defensive (VIX >= 30 or SPY < 200 SMA) -> Gold momentum negative ({current_gld_mom*100:+.1f}%)"
+                s6_reason = f"Defensive State active -> Gold 60d momentum negative ({current_gld_mom*100:+.1f}%)"
                 s6_color = "#0984e3"
                 s6_class = "signal-bil"
                 s6_emoji = "🏦"
         else:
+            # Equity Regime
             if current_vix < 20:
                 s6_target = "QQQ"
-                s6_reason = "Calm Bull (SPY > 200 SMA, VIX < 20) -> Tech Equity"
+                s6_reason = f"Calm Bull active (VIX < 20: {current_vix:.1f}) -> 100% Tech Exposure"
                 s6_color = "#6c5ce7"
                 s6_class = "signal-qqq"
                 s6_emoji = "🚀"
             else:
                 s6_target = "SPY"
-                s6_reason = "Elevated Bull (SPY > 200 SMA, 20 <= VIX < 30) -> Broad Equity"
+                s6_reason = f"Elevated Bull active (20 <= VIX < 30: {current_vix:.1f}) -> 100% Core Equity"
                 s6_color = "#00cec9"
                 s6_class = "regime-bull"
                 s6_emoji = "🐂"
         
-        # Original regime
+        # ========================================
+        # ORIGINAL REGIME (for comparison)
+        # ========================================
         if current_spy < current_sma200:
             target = 0
             signal_emoji = "🐻"
@@ -531,6 +467,28 @@ def fetch_market_data():
             action_text = "HOLD 100% - Continue holding"
             regime_class = "regime-bull"
         
+        # ========================================
+        # FETCH LIVE PRICES FOR EXECUTION TICKERS
+        # ========================================
+        live_prices = {}
+        for key, config in ETF_CONFIG.items():
+            ticker = config['ticker']
+            try:
+                # Try .L suffix for LSE
+                for t in [ticker, f"{ticker}.L"]:
+                    try:
+                        temp = yf.Ticker(t)
+                        hist = temp.history(period="5d")
+                        if len(hist) > 0:
+                            live_prices[ticker] = float(hist['Close'].iloc[-1])
+                            break
+                    except:
+                        continue
+                if ticker not in live_prices:
+                    live_prices[ticker] = config['price']
+            except:
+                live_prices[ticker] = config['price']
+        
         return {
             'spy_close': current_spy,
             'qqq_close': current_qqq,
@@ -553,6 +511,8 @@ def fetch_market_data():
             's6_emoji': s6_emoji,
             'is_above_sma200': is_above_sma200,
             'is_above_ema50': is_above_ema50,
+            'in_equity_state': in_equity_state,
+            'live_prices': live_prices,
             'target': target,
             'signal_emoji': signal_emoji,
             'signal_color': signal_color,
@@ -564,6 +524,7 @@ def fetch_market_data():
             'data_source': 'real'
         }
     except Exception as e:
+        st.error(f"Data Fetch Error: {e}")
         return None
 
 with st.spinner("Loading market data..."):
@@ -572,6 +533,15 @@ with st.spinner("Loading market data..."):
 if data is None:
     st.error("Failed to fetch data. Please try again.")
     st.stop()
+
+# ============================================
+# UPDATE ETF CONFIG WITH LIVE PRICES
+# ============================================
+
+for key, config in ETF_CONFIG.items():
+    ticker = config['ticker']
+    if ticker in data.get('live_prices', {}):
+        config['price'] = data['live_prices'][ticker]
 
 # ============================================
 # DATA SOURCE BADGE
@@ -586,13 +556,23 @@ st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 # S6 SIGNAL CARD
 # ============================================
 
+state_display = "🟢 Equity" if data['in_equity_state'] == 1 else "🔴 Defensive"
+
 st.markdown(f"""
 <div class="{data['s6_class']}">
     <div style="font-size:48px;">{data['s6_emoji']}</div>
     <div style="font-size:28px; font-weight:700; letter-spacing:1px;">🎯 TARGET: {data['s6_target']}</div>
     <div style="font-size:16px; opacity:0.9; margin-top:8px;">{data['s6_reason']}</div>
     <div style="font-size:14px; opacity:0.7; margin-top:8px;">
-        SPY: ${data['spy_close']:.2f} | 200 SMA: ${data['sma200']:.2f} | VIX: {data['vix_close']:.1f}
+        SPY: ${data['spy_close']:.2f} | 200 SMA: ${data['sma200']:.2f} | 50 EMA: ${data['ema50']:.2f} | VIX: {data['vix_close']:.1f}
+    </div>
+    <div style="font-size:13px; opacity:0.6; margin-top:6px; background:rgba(0,0,0,0.2); padding:6px 12px; border-radius:8px; display:inline-block;">
+        State: {state_display} | 
+        SPY above 200 SMA: {'✅' if data['is_above_sma200'] else '❌'} |
+        SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
+    </div>
+    <div style="font-size:11px; opacity:0.4; margin-top:4px;">
+        ⚡ Asymmetric Re-entry: Exit on SPY < 200 SMA OR VIX >= 30 | Re-enter on SPY > 50 EMA AND VIX < 25
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -645,6 +625,7 @@ with col2:
             </div>
             <div style="margin-top:10px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; text-align:center;">
                 <span style="color:rgba(255,255,255,0.3); font-size:12px;">
+                    State: {'🟢 Equity' if data['in_equity_state'] == 1 else '🔴 Defensive'} | 
                     SPY above 200 SMA: {'✅' if data['is_above_sma200'] else '❌'} | 
                     SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
                 </span>
@@ -653,7 +634,7 @@ with col2:
                 <div style="font-size:12px; color:rgba(255,255,255,0.4);">ETF to Execute</div>
                 <div style="font-size:22px; font-weight:700; color:{data['s6_color']};">{etf['ticker']}</div>
                 <div style="font-size:12px; color:rgba(255,255,255,0.6);">{etf['name']}</div>
-                <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']}</div>
+                <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']} | ${etf['price']:.2f}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -695,7 +676,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Portfolio size input
 col1, col2 = st.columns([1, 2])
 
 with col1:
@@ -717,11 +697,14 @@ with col2:
     </div>
     """, unsafe_allow_html=True)
 
-# Generate order book plan
-order_book = generate_full_order_book(data['s6_target'], portfolio_size)
+target_etf = get_etf_config(data['s6_target'])
 
-if order_book and len(order_book) > 0:
-    plan = order_book[0]
+if target_etf:
+    price = target_etf['price']
+    ticker = target_etf['ticker']
+    name = target_etf['name']
+    shares = portfolio_size / price
+    total_cost = shares * price
     
     st.markdown(f"""
     <div class="order-plan">
@@ -740,38 +723,31 @@ if order_book and len(order_book) > 0:
             </thead>
             <tbody>
                 <tr>
-                    <td><span class="{plan['action_class']}">{plan['action']}</span></td>
-                    <td>{plan['name']}</td>
-                    <td><strong>{plan['ticker']}</strong></td>
-                    <td>${plan['price']:.2f}</td>
-                    <td>{plan['shares_to_trade']:.2f}</td>
-                    <td>${plan['estimated_cost']:,.2f}</td>
-                    <td>{plan['target_allocation']/portfolio_size*100:.1f}%</td>
+                    <td><span class="action-buy">BUY</span></td>
+                    <td>{name}</td>
+                    <td><strong>{ticker}</strong></td>
+                    <td>${price:.2f}</td>
+                    <td>{shares:.2f}</td>
+                    <td>${total_cost:,.2f}</td>
+                    <td>100.0%</td>
                 </tr>
             </tbody>
         </table>
         <div style="margin-top:15px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; display:flex; justify-content:space-between; flex-wrap:wrap;">
             <span style="color:rgba(255,255,255,0.5); font-size:12px;">
-                ISIN: {plan['isin']} | Exchange: {plan['exchange']}
+                ISIN: {target_etf['isin']} | Exchange: {target_etf['exchange']}
             </span>
             <span style="color:rgba(255,255,255,0.5); font-size:12px;">
-                TER: {plan['ter']} | Currency: {plan['currency']}
+                TER: {target_etf['ter']} | Currency: {target_etf['currency']}
             </span>
             <span style="color:rgba(255,255,255,0.5); font-size:12px;">
-                Portfolio: ${portfolio_size:,.2f} → Target: ${plan['target_allocation']:,.2f}
+                Portfolio: ${portfolio_size:,.2f} → Target: ${total_cost:,.2f}
             </span>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Execution instructions
-    if plan['action'] == "BUY":
-        st.info(f"📈 **BUY Order:** Place a **limit order** for {plan['shares_to_trade']:.2f} shares of {plan['ticker']} at or near ${plan['price']:.2f}. Total cost: ${plan['estimated_cost']:,.2f}.")
-    elif plan['action'] == "SELL":
-        st.warning(f"📉 **SELL Order:** Place a **limit order** to sell {plan['shares_to_trade']:.2f} shares of {plan['ticker']} at or near ${plan['price']:.2f}. Total proceeds: ${plan['estimated_cost']:,.2f}.")
-    else:
-        st.success(f"✅ **HOLD:** No action needed. Current position matches target allocation for {plan['ticker']}.")
-
+    st.info(f"📈 **BUY Order:** Place a **limit order** for {shares:.2f} shares of {ticker} at or near ${price:.2f}. Total cost: ${total_cost:,.2f}.")
 else:
     st.warning("⚠️ No order book plan generated. Please check your configuration.")
 
@@ -795,7 +771,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Create DataFrame for the execution matrix
 matrix_data = []
 for target, config in ETF_CONFIG.items():
     if target == 'QQQ':
@@ -951,6 +926,9 @@ with st.sidebar:
         <div style="font-size:36px;">{data['s6_emoji']}</div>
         <div style="font-size:20px; font-weight:700; color:{data['s6_color']};">{data['s6_target']}</div>
         <div style="font-size:12px; color:rgba(255,255,255,0.7);">{data['s6_reason'][:50]}...</div>
+        <div style="font-size:11px; color:rgba(255,255,255,0.4); margin-top:4px;">
+            State: {'🟢 Equity' if data['in_equity_state'] == 1 else '🔴 Defensive'}
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -968,11 +946,22 @@ with st.sidebar:
     st.markdown("""
     | Condition | Target |
     |-----------|--------|
-    | VIX >= 30 OR SPY < 200 SMA | **DEFENSIVE** |
-    | -> GLD Momentum > 0 | 🪙 GLD |
-    | -> GLD Momentum <= 0 | 🏦 BIL |
-    | SPY > 200 SMA + VIX < 20 | 🚀 QQQ |
-    | SPY > 200 SMA + 20 <= VIX < 30 | 🐂 SPY |
+    | **Equity State** | |
+    | VIX < 20 | 🚀 **QQQ** |
+    | 20 <= VIX < 30 | 🐂 **SPY** |
+    | **Defensive State** | |
+    | GLD Mom > 0 | 🪙 **GLD** |
+    | GLD Mom <= 0 | 🏦 **BIL** |
+    """)
+    
+    st.markdown("---")
+    
+    st.markdown("#### ⚡ Asymmetric Re-entry")
+    st.markdown("""
+    | Exit | Re-enter |
+    |------|----------|
+    | SPY < 200 SMA | SPY > 50 EMA |
+    | OR VIX >= 30 | AND VIX < 25 |
     """)
     
     st.markdown("---")
