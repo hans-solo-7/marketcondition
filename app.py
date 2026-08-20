@@ -1,6 +1,6 @@
 # ============================================
-# MARKET CONDITION DASHBOARD - ENTERPRISE EDITION
-# With Head-to-Head Benchmark Section
+# MARKET CONDITION DASHBOARD - WITH S6 SIGNAL
+# Includes Strategy 6 (Offensive Regimes) logic
 # ============================================
 
 import streamlit as st
@@ -81,6 +81,36 @@ st.markdown("""
         color: white;
     }
     
+    .signal-qqq {
+        background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 8px 32px rgba(108,92,231,0.4);
+        animation: pulse-qqq 2s infinite;
+        text-align: center;
+        color: white;
+    }
+    
+    .signal-gld {
+        background: linear-gradient(135deg, #fdcb6e, #f39c12);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 8px 32px rgba(243,156,18,0.4);
+        animation: pulse-gold 2s infinite;
+        text-align: center;
+        color: white;
+    }
+    
+    .signal-bil {
+        background: linear-gradient(135deg, #74b9ff, #0984e3);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 8px 32px rgba(9,132,227,0.4);
+        animation: pulse-blue 2s infinite;
+        text-align: center;
+        color: white;
+    }
+    
     @keyframes pulse-green {
         0% { box-shadow: 0 8px 32px rgba(0,206,201,0.3); }
         50% { box-shadow: 0 8px 48px rgba(0,206,201,0.6); }
@@ -93,10 +123,22 @@ st.markdown("""
         100% { box-shadow: 0 8px 32px rgba(214,48,49,0.3); }
     }
     
-    @keyframes pulse-orange {
-        0% { box-shadow: 0 8px 32px rgba(225,112,85,0.3); }
-        50% { box-shadow: 0 8px 48px rgba(225,112,85,0.6); }
-        100% { box-shadow: 0 8px 32px rgba(225,112,85,0.3); }
+    @keyframes pulse-qqq {
+        0% { box-shadow: 0 8px 32px rgba(108,92,231,0.4); }
+        50% { box-shadow: 0 8px 48px rgba(108,92,231,0.7); }
+        100% { box-shadow: 0 8px 32px rgba(108,92,231,0.4); }
+    }
+    
+    @keyframes pulse-gold {
+        0% { box-shadow: 0 8px 32px rgba(243,156,18,0.4); }
+        50% { box-shadow: 0 8px 48px rgba(243,156,18,0.7); }
+        100% { box-shadow: 0 8px 32px rgba(243,156,18,0.4); }
+    }
+    
+    @keyframes pulse-blue {
+        0% { box-shadow: 0 8px 32px rgba(9,132,227,0.4); }
+        50% { box-shadow: 0 8px 48px rgba(9,132,227,0.7); }
+        100% { box-shadow: 0 8px 32px rgba(9,132,227,0.4); }
     }
     
     .glow-divider {
@@ -144,47 +186,22 @@ st.markdown("""
         line-height: 1.8;
     }
     
-    .benchmark-table {
-        background: rgba(255,255,255,0.05);
-        border-radius: 15px;
-        padding: 20px;
-        border: 1px solid rgba(255,255,255,0.08);
-        overflow-x: auto;
+    .signal-badge {
+        font-size: 48px;
+        display: block;
+        margin-bottom: 5px;
     }
     
-    .benchmark-table table {
-        width: 100%;
-        border-collapse: collapse;
-        color: rgba(255,255,255,0.9);
+    .signal-target {
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: 1px;
     }
     
-    .benchmark-table th {
-        background: rgba(255,255,255,0.1);
-        padding: 12px 15px;
-        text-align: left;
-        font-weight: 600;
-        color: rgba(255,255,255,0.7);
-        border-bottom: 2px solid rgba(255,255,255,0.1);
-    }
-    
-    .benchmark-table td {
-        padding: 10px 15px;
-        border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-    
-    .benchmark-table .winner {
-        color: #2ecc71;
-        font-weight: 600;
-    }
-    
-    .benchmark-table .winner-badge {
-        display: inline-block;
-        background: rgba(46,204,113,0.2);
-        color: #2ecc71;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 11px;
-        font-weight: 600;
+    .signal-reason {
+        font-size: 16px;
+        opacity: 0.9;
+        margin-top: 8px;
     }
     
     .regime-icon {
@@ -232,68 +249,148 @@ def fetch_market_data():
     try:
         import yfinance as yf
         
-        spy = yf.Ticker("SPY")
-        spy_hist = spy.history(period="1y")
+        # Fetch 2 years of data for S6 signal
+        tickers = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
+        df = yf.download(tickers, period="2y", interval="1d", progress=False)
         
-        if len(spy_hist) > 0:
-            spy_close = spy_hist['Close'].iloc[-1]
-            spy_sma_200 = spy_hist['Close'].rolling(200).mean().iloc[-1]
-            spy_high = spy_hist['Close'].max()
-            spy_low = spy_hist['Close'].min()
-            spy_volume = spy_hist['Volume'].iloc[-1]
-            
-            vix = yf.Ticker("^VIX")
-            vix_hist = vix.history(period="1mo")
-            vix_close = vix_hist['Close'].iloc[-1] if len(vix_hist) > 0 else 20
-            
-            return {
-                'spy_close': float(spy_close),
-                'spy_sma_200': float(spy_sma_200),
-                'spy_high': float(spy_high),
-                'spy_low': float(spy_low),
-                'spy_volume': float(spy_volume),
-                'vix_close': float(vix_close),
-                'spy_hist': spy_hist,
-                'vix_hist': vix_hist,
-                'success': True,
-                'data_source': 'real'
-            }
-    except:
-        pass
-    
-    # Fallback: Simulated data
-    np.random.seed(42)
-    dates = pd.date_range(end=datetime.now(), periods=252, freq='D')
-    base_price = 560
-    returns = np.random.normal(0.0004, 0.012, 252)
-    prices = base_price * (1 + returns).cumprod()
-    
-    spy_close = prices[-1]
-    spy_sma_200 = np.mean(prices[-200:])
-    spy_high = max(prices)
-    spy_low = min(prices)
-    spy_volume = 50000000 + np.random.randint(0, 30000000)
-    vix_close = 18 + np.random.normal(0, 2)
-    
-    spy_hist = pd.DataFrame({'Close': prices, 'Volume': [spy_volume] * len(prices)}, index=dates)
-    vix_hist = pd.DataFrame({'Close': [vix_close + np.random.normal(0, 1) for _ in range(30)]}, 
-                           index=pd.date_range(end=datetime.now(), periods=30, freq='D'))
-    
-    return {
-        'spy_close': float(spy_close),
-        'spy_sma_200': float(spy_sma_200),
-        'spy_high': float(spy_high),
-        'spy_low': float(spy_low),
-        'spy_volume': float(spy_volume),
-        'vix_close': float(vix_close),
-        'spy_hist': spy_hist,
-        'vix_hist': vix_hist,
-        'success': True,
-        'data_source': 'simulated'
-    }
+        # Extract Close prices
+        if isinstance(df.columns, pd.MultiIndex):
+            closes = df["Close"].copy()
+        else:
+            closes = df.copy()
+        
+        closes = closes.ffill().dropna()
+        
+        # Extract series
+        spy = closes["SPY"]
+        qqq = closes["QQQ"]
+        gld = closes["GLD"]
+        bil = closes["BIL"]
+        vix = closes["^VIX"]
+        
+        # Calculate indicators
+        sma200_spy = spy.rolling(window=200).mean()
+        ema50_spy = spy.ewm(span=50, adjust=False).mean()
+        gld_mom = gld.pct_change(60)
+        
+        # Latest values
+        current_spy = float(spy.iloc[-1])
+        current_qqq = float(qqq.iloc[-1])
+        current_gld = float(gld.iloc[-1])
+        current_bil = float(bil.iloc[-1])
+        current_vix = float(vix.iloc[-1])
+        current_sma200 = float(sma200_spy.iloc[-1])
+        current_ema50 = float(ema50_spy.iloc[-1])
+        current_gld_mom = float(gld_mom.iloc[-1])
+        last_date = closes.index[-1]
+        
+        # S6 Signal Logic
+        is_above_sma200 = current_spy > current_sma200
+        is_above_ema50 = current_spy > current_ema50
+        
+        # Decision Matrix
+        if current_vix >= 30 or not is_above_sma200:
+            # Defensive Regime
+            if current_gld_mom > 0:
+                s6_target = "GLD"
+                s6_reason = f"Defensive Regime (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum positive ({current_gld_mom*100:+.1f}%)"
+                s6_color = "#f39c12"
+                s6_class = "signal-gld"
+                s6_emoji = "🪙"
+            else:
+                s6_target = "BIL (or SGOV)"
+                s6_reason = f"Defensive Regime (VIX ≥ 30 or SPY < 200 SMA) → Gold momentum negative/flat ({current_gld_mom*100:+.1f}%)"
+                s6_color = "#0984e3"
+                s6_class = "signal-bil"
+                s6_emoji = "🏦"
+        else:
+            # Equity Regime
+            if current_vix < 20:
+                s6_target = "QQQ"
+                s6_reason = f"Calm Bull (SPY > 200 SMA and VIX < 20.00) → 100% Tech Equity"
+                s6_color = "#6c5ce7"
+                s6_class = "signal-qqq"
+                s6_emoji = "🚀"
+            else:
+                s6_target = "SPY"
+                s6_reason = f"Moderate Bull (SPY > 200 SMA and 20.00 ≤ VIX < 30.00) → 100% Broad Equity"
+                s6_color = "#00cec9"
+                s6_class = "regime-bull"
+                s6_emoji = "🐂"
+        
+        # Original regime (for comparison)
+        if current_spy < current_sma200:
+            target = 0
+            signal = "BEAR"
+            signal_emoji = "🐻"
+            signal_color = "#e74c3c"
+            signal_label = "BEAR MARKET"
+            signal_desc = "S&P 500 below 200-day SMA"
+            action_text = "🔴 SELL ALL - Exit all positions immediately"
+            regime_class = "regime-bear"
+        elif current_vix > 30:
+            target = 50
+            signal = "NEUTRAL"
+            signal_emoji = "⚠️"
+            signal_color = "#f39c12"
+            signal_label = "CAUTION"
+            signal_desc = "VIX above 30 (elevated volatility)"
+            action_text = "🟠 REDUCE TO 50% - Sell half of positions"
+            regime_class = "regime-neutral"
+        else:
+            target = 100
+            signal = "BULL"
+            signal_emoji = "🐂"
+            signal_color = "#2ecc71"
+            signal_label = "BULL MARKET"
+            signal_desc = "All indicators normal"
+            action_text = "🟢 HOLD 100% - Continue holding positions"
+            regime_class = "regime-bull"
+        
+        return {
+            'spy_close': current_spy,
+            'qqq_close': current_qqq,
+            'gld_close': current_gld,
+            'bil_close': current_bil,
+            'vix_close': current_vix,
+            'sma200': current_sma200,
+            'ema50': current_ema50,
+            'gld_mom': current_gld_mom,
+            'date': last_date,
+            'spy_hist': closes['SPY'],
+            'qqq_hist': closes['QQQ'],
+            'gld_hist': closes['GLD'],
+            'vix_hist': closes['^VIX'],
+            # S6 Signal
+            's6_target': s6_target,
+            's6_reason': s6_reason,
+            's6_color': s6_color,
+            's6_class': s6_class,
+            's6_emoji': s6_emoji,
+            'is_above_sma200': is_above_sma200,
+            'is_above_ema50': is_above_ema50,
+            # Original regime
+            'target': target,
+            'signal': signal,
+            'signal_emoji': signal_emoji,
+            'signal_color': signal_color,
+            'signal_label': signal_label,
+            'signal_desc': signal_desc,
+            'action_text': action_text,
+            'regime_class': regime_class,
+            'success': True,
+            'data_source': 'real'
+        }
+    except Exception as e:
+        st.error(f"Data fetch error: {e}")
+        return None
 
 with st.spinner("🔮 Loading market data..."):
     data = fetch_market_data()
+
+if data is None:
+    st.error("Failed to fetch data. Please try again.")
+    st.stop()
 
 # ============================================
 # DATA SOURCE BADGE
@@ -302,68 +399,77 @@ with st.spinner("🔮 Loading market data..."):
 if data['data_source'] == 'real':
     st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-real">✅ LIVE DATA</span></div>', unsafe_allow_html=True)
 else:
-    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-simulated">⚠️ SIMULATED DATA (Yahoo Finance Rate Limited)</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-simulated">⚠️ SIMULATED DATA</span></div>', unsafe_allow_html=True)
 
-st.markdown(f'<p style="text-align:center; color: rgba(255,255,255,0.4); font-size:13px;">Last updated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ET</p>', unsafe_allow_html=True)
+st.markdown(f'<p style="text-align:center; color: rgba(255,255,255,0.4); font-size:13px;">Last updated: {data["date"].strftime("%Y-%m-%d %H:%M")} ET</p>', unsafe_allow_html=True)
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# CALCULATE SIGNALS
-# ============================================
-
-spy_close = data['spy_close']
-spy_sma_200 = data['spy_sma_200']
-vix_close = data['vix_close']
-spy_high = data['spy_high']
-spy_low = data['spy_low']
-spy_volume = data['spy_volume']
-spy_hist = data['spy_hist']
-vix_hist = data['vix_hist']
-
-if spy_close < spy_sma_200:
-    target = 0
-    signal = "BEAR"
-    signal_emoji = "🐻"
-    signal_color = "#e74c3c"
-    signal_label = "BEAR MARKET"
-    signal_desc = "S&P 500 below 200-day SMA"
-    action_text = "🔴 SELL ALL - Exit all positions immediately"
-    regime_class = "regime-bear"
-elif vix_close > 30:
-    target = 50
-    signal = "NEUTRAL"
-    signal_emoji = "⚠️"
-    signal_color = "#f39c12"
-    signal_label = "CAUTION"
-    signal_desc = "VIX above 30 (elevated volatility)"
-    action_text = "🟠 REDUCE TO 50% - Sell half of positions"
-    regime_class = "regime-neutral"
-else:
-    target = 100
-    signal = "BULL"
-    signal_emoji = "🐂"
-    signal_color = "#2ecc71"
-    signal_label = "BULL MARKET"
-    signal_desc = "All indicators normal"
-    action_text = "🟢 HOLD 100% - Continue holding positions"
-    regime_class = "regime-bull"
-
-# ============================================
-# MAIN REGIME CARD
+# S6 SIGNAL CARD (Prominent)
 # ============================================
 
 st.markdown(f"""
-<div class="{regime_class}">
-    <div class="regime-icon">{signal_emoji}</div>
-    <div class="regime-label">{signal_label}</div>
-    <div class="regime-desc">{signal_desc}</div>
-    <div style="font-size:14px; opacity:0.8; margin-top:5px;">
-        Target Exposure: <strong>{target}%</strong>
+<div class="{data['s6_class']}">
+    <div style="font-size:48px;">{data['s6_emoji']}</div>
+    <div style="font-size:28px; font-weight:700; letter-spacing:1px;">🎯 TARGET: {data['s6_target']}</div>
+    <div style="font-size:16px; opacity:0.9; margin-top:8px;">{data['s6_reason']}</div>
+    <div style="font-size:14px; opacity:0.7; margin-top:8px;">
+        SPY: ${data['spy_close']:.2f} | 200 SMA: ${data['sma200']:.2f} | 50 EMA: ${data['ema50']:.2f} | VIX: {data['vix_close']:.1f}
     </div>
-    <div class="regime-action">{action_text}</div>
 </div>
 """, unsafe_allow_html=True)
+
+st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
+
+# ============================================
+# TWO ROWS: Regime (Original) + S6 Details
+# ============================================
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown(f"""
+    <div class="{data['regime_class']}" style="padding:20px;">
+        <div style="font-size:40px;">{data['signal_emoji']}</div>
+        <div style="font-size:24px; font-weight:700;">{data['signal_label']}</div>
+        <div style="font-size:14px; opacity:0.8;">{data['signal_desc']}</div>
+        <div style="font-size:16px; font-weight:600; margin-top:8px; background:rgba(0,0,0,0.2); padding:8px 16px; border-radius:8px; display:inline-block;">
+            Exposure: {data['target']}%
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"""
+    <div style="background:rgba(255,255,255,0.05); border-radius:15px; padding:20px; border:1px solid rgba(255,255,255,0.08); height:100%;">
+        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 S6 Signal Details</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:18px; font-weight:700; color:#00cec9;">${data['spy_close']:.2f}</div>
+                <div style="font-size:11px; color:rgba(255,255,255,0.4);">SPY Price</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:18px; font-weight:700; color:#fd79a8;">${data['sma200']:.2f}</div>
+                <div style="font-size:11px; color:rgba(255,255,255,0.4);">200-day SMA</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:18px; font-weight:700; color:#fdcb6e;">{data['vix_close']:.1f}</div>
+                <div style="font-size:11px; color:rgba(255,255,255,0.4);">VIX</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:18px; font-weight:700; color:#f39c12;">{data['gld_mom']*100:+.1f}%</div>
+                <div style="font-size:11px; color:rgba(255,255,255,0.4);">GLD 60d Momentum</div>
+            </div>
+        </div>
+        <div style="margin-top:10px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; text-align:center;">
+            <span style="color:rgba(255,255,255,0.3); font-size:12px;">
+                SPY above 200 SMA: {'✅' if data['is_above_sma200'] else '❌'} | 
+                SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
@@ -377,45 +483,35 @@ with col1:
     st.markdown(f"""
     <div class="metric-card">
         <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">S&P 500 (SPY)</div>
-        <div style="font-size:32px; font-weight:700; color:white;">${spy_close:.2f}</div>
-        <div style="display:flex; justify-content:space-between; margin-top:10px;">
-            <span style="color:rgba(255,255,255,0.3); font-size:12px;">52W H: ${spy_high:.2f}</span>
-            <span style="color:rgba(255,255,255,0.3); font-size:12px;">52W L: ${spy_low:.2f}</span>
-        </div>
+        <div style="font-size:32px; font-weight:700; color:white;">${data['spy_close']:.2f}</div>
+        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">{'🟢 Above' if data['is_above_sma200'] else '🔴 Below'} 200 SMA</span></div>
     </div>
     """, unsafe_allow_html=True)
 
 with col2:
-    pct_from_sma = ((spy_close / spy_sma_200) - 1) * 100
-    color = "#2ecc71" if pct_from_sma > 0 else "#e74c3c"
     st.markdown(f"""
     <div class="metric-card">
-        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">200-day SMA</div>
-        <div style="font-size:32px; font-weight:700; color:white;">${spy_sma_200:.2f}</div>
-        <div style="color:{color}; font-size:16px; font-weight:600; margin-top:5px;">{pct_from_sma:+.2f}% from SMA</div>
-        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">{'🟢 Above' if pct_from_sma > 0 else '🔴 Below'} 200-day average</span></div>
+        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">NASDAQ (QQQ)</div>
+        <div style="font-size:32px; font-weight:700; color:white;">${data['qqq_close']:.2f}</div>
+        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">Tech-heavy growth</span></div>
     </div>
     """, unsafe_allow_html=True)
 
 with col3:
-    vix_color = "#e74c3c" if vix_close > 30 else "#f39c12" if vix_close > 20 else "#2ecc71"
-    vix_level = "Extreme Fear" if vix_close > 30 else "Elevated" if vix_close > 20 else "Normal"
     st.markdown(f"""
     <div class="metric-card">
-        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">VIX (Fear Index)</div>
-        <div style="font-size:32px; font-weight:700; color:{vix_color};">{vix_close:.1f}</div>
-        <div style="color:{vix_color}; font-size:16px; font-weight:600; margin-top:5px;">{vix_level}</div>
-        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">{'🔴 > 30 (High Risk)' if vix_close > 30 else '🟢 < 30 (Normal)'}</span></div>
+        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">Gold (GLD)</div>
+        <div style="font-size:32px; font-weight:700; color:#f39c12;">${data['gld_close']:.2f}</div>
+        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">Momentum: {data['gld_mom']*100:+.1f}% (60d)</span></div>
     </div>
     """, unsafe_allow_html=True)
 
 with col4:
     st.markdown(f"""
     <div class="metric-card">
-        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">🎯 Target Exposure</div>
-        <div style="font-size:32px; font-weight:700; color:{signal_color};">{target}%</div>
-        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">Regime: {signal_label}</span></div>
-        <div style="margin-top:3px;"><span style="color:rgba(255,255,255,0.2); font-size:11px;">{action_text}</span></div>
+        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px;">🎯 S6 Target</div>
+        <div style="font-size:32px; font-weight:700; color:{data['s6_color']};">{data['s6_target']}</div>
+        <div style="margin-top:5px;"><span style="color:rgba(255,255,255,0.3); font-size:12px;">{data['s6_emoji']} Strategy 6 Signal</span></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -427,92 +523,167 @@ st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 st.markdown("### 📊 Market Charts")
 
 fig = make_subplots(
-    rows=2, cols=2,
+    rows=3, cols=2,
     shared_xaxes=False,
-    vertical_spacing=0.12,
+    vertical_spacing=0.10,
     horizontal_spacing=0.15,
     subplot_titles=(
-        "S&P 500 (SPY) with 200-day SMA",
+        "S&P 500 (SPY) with SMA200 & EMA50",
+        "NASDAQ (QQQ)",
+        "Gold (GLD) with 60-day Momentum",
         "VIX (Fear Index)",
-        "Volume",
-        "Target Exposure"
+        "S6 Target Exposure",
+        "BIL (Cash Equivalent)"
     )
 )
 
 # 1. SPY Chart
 fig.add_trace(
     go.Scatter(
-        x=spy_hist.index,
-        y=spy_hist['Close'],
-        name="SPY Close",
+        x=data['spy_hist'].index,
+        y=data['spy_hist'],
+        name="SPY",
         line=dict(color='#00cec9', width=2.5),
         fill='tozeroy',
-        fillcolor='rgba(0,206,201,0.1)'
+        fillcolor='rgba(0,206,201,0.05)'
     ),
     row=1, col=1
 )
 
 fig.add_trace(
     go.Scatter(
-        x=spy_hist.index,
-        y=spy_hist['Close'].rolling(200).mean(),
+        x=data['spy_hist'].index,
+        y=data['spy_hist'].rolling(200).mean(),
         name="200-day SMA",
         line=dict(color='#fd79a8', width=2, dash='dash')
     ),
     row=1, col=1
 )
 
-# 2. VIX Chart
 fig.add_trace(
     go.Scatter(
-        x=vix_hist.index,
-        y=vix_hist['Close'],
+        x=data['spy_hist'].index,
+        y=data['spy_hist'].ewm(span=50, adjust=False).mean(),
+        name="50-day EMA",
+        line=dict(color='#fdcb6e', width=2, dash='dot')
+    ),
+    row=1, col=1
+)
+
+# 2. QQQ Chart
+fig.add_trace(
+    go.Scatter(
+        x=data['qqq_hist'].index,
+        y=data['qqq_hist'],
+        name="QQQ",
+        line=dict(color='#6c5ce7', width=2.5),
+        fill='tozeroy',
+        fillcolor='rgba(108,92,231,0.05)'
+    ),
+    row=1, col=2
+)
+
+# 3. GLD Chart with Momentum
+fig.add_trace(
+    go.Scatter(
+        x=data['gld_hist'].index,
+        y=data['gld_hist'],
+        name="GLD",
+        line=dict(color='#f39c12', width=2.5),
+        fill='tozeroy',
+        fillcolor='rgba(243,156,18,0.05)'
+    ),
+    row=2, col=1
+)
+
+# GLD Momentum (60-day)
+gld_mom_series = data['gld_hist'].pct_change(60) * 100
+fig.add_trace(
+    go.Scatter(
+        x=gld_mom_series.index,
+        y=gld_mom_series,
+        name="GLD 60d Momentum %",
+        line=dict(color='#e17055', width=1.5, dash='dash'),
+        yaxis="y2"
+    ),
+    row=2, col=1
+)
+
+fig.add_hline(y=0, line_dash="dot", line_color="white", opacity=0.3, row=2, col=1)
+
+# 4. VIX Chart
+fig.add_trace(
+    go.Scatter(
+        x=data['vix_hist'].index,
+        y=data['vix_hist'],
         name="VIX",
         line=dict(color='#e17055', width=2.5),
         fill='tozeroy',
         fillcolor='rgba(225,112,85,0.1)'
     ),
-    row=1, col=2
-)
-
-fig.add_hline(y=30, line_dash="dash", line_color="#d63031", 
-              annotation_text="Risk Threshold (30)", row=1, col=2)
-
-# 3. Volume Chart
-fig.add_trace(
-    go.Bar(
-        x=spy_hist.index[-60:],
-        y=spy_hist['Volume'].iloc[-60:] / 1e6,
-        name="Volume (M)",
-        marker_color='rgba(108,92,231,0.7)'
-    ),
-    row=2, col=1
-)
-
-# 4. Target Exposure Bar
-fig.add_trace(
-    go.Bar(
-        x=["Exposure"],
-        y=[target],
-        name="Target Exposure",
-        marker_color=signal_color,
-        text=[f"{target}%"],
-        textposition="outside",
-        width=[0.3]
-    ),
     row=2, col=2
 )
 
-# Reference lines
-fig.add_hline(y=100, line_dash="dot", line_color="#2ecc71", 
-              annotation_text="100% (Bull)", row=2, col=2)
-fig.add_hline(y=50, line_dash="dot", line_color="#f39c12", 
-              annotation_text="50% (Neutral)", row=2, col=2)
-fig.add_hline(y=0, line_dash="dot", line_color="#e74c3c", 
-              annotation_text="0% (Bear)", row=2, col=2)
+fig.add_hline(y=30, line_dash="dash", line_color="#d63031", 
+              annotation_text="Risk Threshold (30)", row=2, col=2)
+fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", 
+              annotation_text="Calm Threshold (20)", row=2, col=2)
+
+# 5. S6 Target Exposure (Simplified visualization)
+# Recreate S6 exposure over time
+s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
+for i in range(len(data['spy_hist'])):
+    date = data['spy_hist'].index[i]
+    spy_val = data['spy_hist'].iloc[i]
+    sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
+    vix_val = data['vix_hist'].iloc[i] if i < len(data['vix_hist']) else 20
+    gld_mom_val = data['gld_hist'].pct_change(60).iloc[i] if i > 60 else 0
+    
+    if pd.isna(sma_val) or pd.isna(vix_val):
+        continue
+    
+    # Simplified S6 logic for visualization
+    if vix_val >= 30 or spy_val < sma_val:
+        s6_exposure.iloc[i] = 0.0
+    elif vix_val < 20:
+        s6_exposure.iloc[i] = 1.0  # QQQ exposure (simplified)
+    else:
+        s6_exposure.iloc[i] = 1.0  # SPY exposure
+
+fig.add_trace(
+    go.Scatter(
+        x=s6_exposure.index,
+        y=s6_exposure,
+        name="S6 Target Exposure",
+        line=dict(color='#6c5ce7', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(108,92,231,0.2)'
+    ),
+    row=3, col=1
+)
+
+fig.add_hline(y=1.0, line_dash="dot", line_color="#2ecc71", 
+              annotation_text="100%", row=3, col=1)
+fig.add_hline(y=0.5, line_dash="dot", line_color="#f39c12", 
+              annotation_text="50%", row=3, col=1)
+fig.add_hline(y=0.0, line_dash="dot", line_color="#e74c3c", 
+              annotation_text="0% (Cash)", row=3, col=1)
+
+# 6. BIL Chart
+fig.add_trace(
+    go.Scatter(
+        x=data['bil_hist'].index if 'bil_hist' in data else data['spy_hist'].index,
+        y=data['bil_hist'] if 'bil_hist' in data else pd.Series(1.0, index=data['spy_hist'].index),
+        name="BIL (Cash)",
+        line=dict(color='#0984e3', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(9,132,227,0.05)'
+    ),
+    row=3, col=2
+)
 
 fig.update_layout(
-    height=700,
+    height=900,
     showlegend=True,
     template="plotly_dark",
     hovermode="x unified",
@@ -537,301 +708,43 @@ with st.sidebar:
     st.markdown("---")
     
     st.markdown(f"""
-    <div style="text-align:center; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid {signal_color};">
-        <div style="font-size:36px;">{signal_emoji}</div>
-        <div style="font-size:20px; font-weight:700; color:{signal_color};">{signal_label}</div>
-        <div style="font-size:14px; color:rgba(255,255,255,0.7);">{signal_desc}</div>
-        <div style="font-size:16px; font-weight:600; color:white; margin-top:5px;">Target: {target}%</div>
+    <div style="text-align:center; padding:15px; background:rgba(255,255,255,0.05); border-radius:10px; border:1px solid {data['s6_color']};">
+        <div style="font-size:36px;">{data['s6_emoji']}</div>
+        <div style="font-size:20px; font-weight:700; color:{data['s6_color']};">{data['s6_target']}</div>
+        <div style="font-size:12px; color:rgba(255,255,255,0.7);">{data['s6_reason'][:50]}...</div>
     </div>
     """, unsafe_allow_html=True)
     
     st.markdown("---")
     
     st.markdown("#### 🔍 Current Snapshot")
-    st.write(f"**S&P 500:** ${spy_close:.2f}")
-    st.write(f"**200-day SMA:** ${spy_sma_200:.2f}")
-    st.write(f"**VIX:** {vix_close:.1f}")
+    st.write(f"**SPY:** ${data['spy_close']:.2f}")
+    st.write(f"**QQQ:** ${data['qqq_close']:.2f}")
+    st.write(f"**GLD:** ${data['gld_close']:.2f}")
+    st.write(f"**VIX:** {data['vix_close']:.1f}")
     
     st.markdown("---")
     
-    st.markdown("#### 📋 Strategy Rules")
+    st.markdown("#### 📋 S6 Rules")
     st.markdown("""
-    | Condition | Action |
+    | Condition | Target |
     |-----------|--------|
-    | SPY < 200 SMA | 🔴 **SELL 100%** |
-    | SPY > 200 SMA + VIX > 30 | 🟠 **SELL 50%** |
-    | SPY > 200 SMA + VIX < 30 | 🟢 **HOLD 100%** |
+    | VIX ≥ 30 OR SPY < 200 SMA | 🔴 **DEFENSIVE** |
+    | → GLD Momentum > 0 | 🪙 **GLD** |
+    | → GLD Momentum ≤ 0 | 🏦 **BIL** |
+    | SPY > 200 SMA + VIX < 20 | 🚀 **QQQ** |
+    | SPY > 200 SMA + 20 ≤ VIX < 30 | 🐂 **SPY** |
     """)
     
     st.markdown("---")
     
-    if spy_close >= spy_sma_200:
-        st.success("🟢 S&P 500: Above 200-day SMA")
+    st.markdown("#### 📊 Status")
+    if data['is_above_sma200']:
+        st.success("🟢 SPY: Above 200-day SMA")
     else:
-        st.error("🔴 S&P 500: Below 200-day SMA")
+        st.error("🔴 SPY: Below 200-day SMA")
     
-    if vix_close <= 20:
-        st.success(f"🟢 VIX: {vix_close:.1f} (Normal)")
-    elif vix_close <= 30:
-        st.warning(f"🟡 VIX: {vix_close:.1f} (Elevated)")
-    else:
-        st.error(f"🔴 VIX: {vix_close:.1f} (Extreme)")
-    
-    st.markdown("---")
-    
-    if target == 100:
-        st.info("✅ No action needed. Continue holding.")
-    elif target == 50:
-        st.warning("⚠️ Reduce exposure to 50% at next market open.")
-    else:
-        st.error("🚨 Exit all positions at next market open.")
-    
-    st.markdown("---")
-    
-    if st.button("🔄 Refresh Data", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-# ============================================
-# STRATEGY OVERVIEW & HEAD-TO-HEAD BENCHMARK (FULLY FIXED)
-# ============================================
-
-st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
-
-st.markdown("""
-<div class="strategy-description">
-    <h3 style="color:white; margin-top:0;">📖 Strategy Overview</h3>
-    <p style="color:rgba(255,255,255,0.8);">
-        This dashboard implements a <strong>systematic, rules-based investment strategy</strong> 
-        that combines two proven market indicators:
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-# 1. 200-Day Moving Average
-st.markdown("""
-<div class="strategy-description" style="margin-top:15px;">
-    <h4 style="color:#00cec9; margin-top:0;">1️⃣ The 200-Day Moving Average (Trend Filter)</h4>
-    <p style="color:rgba(255,255,255,0.8);">
-        The 200-day simple moving average (SMA) is one of the most widely followed technical indicators 
-        by institutional investors. It acts as a <strong>primary trend filter</strong>:
-    </p>
-    <ul style="color:rgba(255,255,255,0.8); padding-left:20px;">
-        <li><strong style="color:#2ecc71;">Above 200-day SMA:</strong> Bull market regime — stay invested</li>
-        <li><strong style="color:#e74c3c;">Below 200-day SMA:</strong> Bear market regime — protect capital</li>
-    </ul>
-    <p style="color:rgba(255,255,255,0.7); font-size:14px;">
-        Research shows that the 200-day SMA has been a reliable risk-control tool. During major bear markets 
-        (2000, 2008, 2020, 2022), investors who exited when SPY fell below its 200-day SMA significantly 
-        reduced their drawdowns. The "penalty" for this protection is occasional whipsaws in choppy markets, 
-        but the long-term risk-adjusted returns (Sharpe Ratio) have historically improved.
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-# 2. VIX
-st.markdown("""
-<div class="strategy-description" style="margin-top:15px;">
-    <h4 style="color:#f39c12; margin-top:0;">2️⃣ The VIX (Volatility Filter)</h4>
-    <p style="color:rgba(255,255,255,0.8);">
-        The VIX, often called the "Fear Index," measures market expectations of near-term volatility. 
-        When VIX exceeds 30, it typically indicates elevated fear and market stress:
-    </p>
-    <ul style="color:rgba(255,255,255,0.8); padding-left:20px;">
-        <li><strong style="color:#2ecc71;">VIX below 30:</strong> Normal market conditions — full exposure</li>
-        <li><strong style="color:#e74c3c;">VIX above 30:</strong> High volatility environment — reduce exposure by 50%</li>
-    </ul>
-    <p style="color:rgba(255,255,255,0.7); font-size:14px;">
-        The VIX tends to spike during market selloffs and periods of uncertainty. By reducing exposure when 
-        VIX is elevated, the strategy aims to <strong>protect against sudden market declines</strong> while 
-        maintaining participation in normal market conditions.
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================
-# HEAD-TO-HEAD BENCHMARK SECTION
-# ============================================
-
-st.markdown("""
-<div class="strategy-description" style="margin-top:15px;">
-    <h3 style="color:white; margin-top:0;">🏆 Head-to-Head Benchmark: Buy & Hold vs. Tactical Overlay</h3>
-    <p style="color:rgba(255,255,255,0.7); font-size:14px;">
-        <strong>Period:</strong> 2011-08-24 to 2026-08-20 (15.0 years | 3,768 trading days)<br>
-        <strong>Initial Investment:</strong> $10,000
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-# Benchmark Table using HTML
-st.markdown("""
-<div class="benchmark-table">
-    <table>
-        <thead>
-            <tr>
-                <th>KPI Metric</th>
-                <th>Buy &amp; Hold</th>
-                <th>Tactical (SMA200 + VIX)</th>
-                <th>Winner</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td><strong>Total Return</strong></td>
-                <td>748.0%</td>
-                <td>341.6%</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
-            </tr>
-            <tr>
-                <td><strong>Annualized Return (CAGR)</strong></td>
-                <td>15.4%</td>
-                <td>10.4%</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
-            </tr>
-            <tr>
-                <td><strong>Annualized Volatility</strong></td>
-                <td>16.9%</td>
-                <td>11.1%</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
-            </tr>
-            <tr>
-                <td><strong>Max Drawdown</strong></td>
-                <td style="color:#e74c3c;">-33.7%</td>
-                <td style="color:#2ecc71;">-21.4%</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
-            </tr>
-            <tr>
-                <td><strong>Sharpe Ratio (rf=2%)</strong></td>
-                <td>0.81</td>
-                <td>0.77</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
-            </tr>
-            <tr>
-                <td><strong>Sortino Ratio</strong></td>
-                <td>1.01</td>
-                <td>0.88</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
-            </tr>
-            <tr>
-                <td><strong>Calmar Ratio</strong></td>
-                <td>0.46</td>
-                <td>0.49</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
-            </tr>
-            <tr>
-                <td><strong>Win Rate (Active Days)</strong></td>
-                <td>55.4%</td>
-                <td>54.9%</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Buy &amp; Hold</span></td>
-            </tr>
-            <tr>
-                <td><strong>Max Consecutive Losses</strong></td>
-                <td>8</td>
-                <td>7</td>
-                <td><span style="color:#2ecc71; font-weight:600;">🏆 Tactical Overlay</span></td>
-            </tr>
-        </tbody>
-    </table>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================
-# WHY USE TACTICAL OVERLAY - EXPLANATION (FIXED)
-# ============================================
-
-st.markdown("""
-<div class="strategy-description" style="margin-top:15px;">
-    <h4 style="color:#6c5ce7; margin-top:0;">🤔 Why Use the Tactical Overlay if Returns Are Lower?</h4>
-    <p style="color:rgba(255,255,255,0.8);">
-        This is the most important question. The answer lies in <strong>risk management</strong> 
-        and the <strong>psychological reality</strong> of investing:
-    </p>
-    <div style="background:rgba(46,204,113,0.1); border-left:3px solid #2ecc71; padding:15px; margin:15px 0; border-radius:5px;">
-        <p style="color:rgba(255,255,255,0.9); margin:0;">
-            <strong>🔑 Key Insight:</strong> The Tactical Overlay cuts maximum drawdown <strong>from -33.7% to -21.4%</strong> 
-            — a <strong>36% reduction</strong> in peak-to-trough loss.
-        </p>
-    </div>
-    <p style="color:rgba(255,255,255,0.8);">
-        <strong>Why this matters:</strong>
-    </p>
-    <ul style="color:rgba(255,255,255,0.8); padding-left:20px;">
-        <li><strong>Psychological Survival:</strong> A 33.7% drawdown means $10,000 becomes $6,630. 
-        Many investors panic and sell at the bottom. A 21.4% drawdown ($10,000 → $7,860) is 
-        <strong>emotionally easier to withstand</strong> and less likely to trigger panic selling.</li>
-        <li><strong>Recovery Time:</strong> A 33.7% loss requires a <strong>50.8% gain</strong> to recover. 
-        A 21.4% loss requires only a <strong>27.2% gain</strong> — <strong>nearly half</strong> the required recovery.</li>
-        <li><strong>Consistency:</strong> The Tactical strategy has slightly lower risk-adjusted returns (Sharpe 0.77 vs 0.81), 
-        but <strong>much lower volatility</strong> (11.1% vs 16.9%) and <strong>better downside protection</strong> 
-        (Calmar 0.49 vs 0.46).</li>
-        <li><strong>Behavioral Edge:</strong> A strategy you can <strong>stick with</strong> during tough times 
-        is more valuable than one with mathematically higher returns that you cannot hold.</li>
-    </ul>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================
-# TACTICAL EXPOSURE STATS
-# ============================================
-
-st.markdown("""
-<div class="strategy-description" style="margin-top:15px;">
-    <h4 style="color:#fd79a8; margin-top:0;">📊 Tactical Exposure Statistics</h4>
-    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin:15px 0;">
-        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
-            <div style="font-size:28px; font-weight:700; color:#2ecc71;">80.2%</div>
-            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Time Invested (3,021 days)</div>
-        </div>
-        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
-            <div style="font-size:28px; font-weight:700; color:#f39c12;">19.8%</div>
-            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Time in Cash (747 days)</div>
-        </div>
-        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
-            <div style="font-size:28px; font-weight:700; color:#e17055;">83</div>
-            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Total Switches (Trades)</div>
-        </div>
-    </div>
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
-            <div style="font-size:20px; font-weight:700; color:#3498db;">$84,799.94</div>
-            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Final Balance (Buy &amp; Hold)</div>
-        </div>
-        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; text-align:center;">
-            <div style="font-size:20px; font-weight:700; color:#2ecc71;">$44,158.88</div>
-            <div style="color:rgba(255,255,255,0.5); font-size:12px;">Final Balance (Tactical Overlay)</div>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================
-# DISCLAIMER
-# ============================================
-
-st.markdown("""
-<div class="strategy-description" style="margin-top:15px; border-left: 3px solid #fd79a8; padding-left: 20px;">
-    <h4 style="color:#fd79a8; margin-top:0;">⚠️ Important Disclaimer</h4>
-    <p style="font-size:14px; color:rgba(255,255,255,0.6);">
-        This dashboard is for <strong>educational and informational purposes only</strong>. 
-        Past performance does not guarantee future results. The strategy is a systematic, rules-based 
-        approach that has been backtested, but all investments carry risk. 
-        Always consult with a qualified financial advisor before making investment decisions.
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================
-# FOOTER
-# ============================================
-
-st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    st.markdown(f"""
-    <div style="text-align:center; color:rgba(255,255,255,0.2); font-size:12px; padding:20px;">
-        ⚡ Powered by Streamlit &amp; { 'Yahoo Finance (Live)' if data['data_source'] == 'real' else 'Simulated Data' }<br>
-        Max Sharpe + Value Blend Strategy (v4) • Backtest Faithful<br>
-        Data Source: {'✅ LIVE' if data['data_source'] == 'real' else '⚠️ SIMULATED'}
-    </div>
-    """, unsafe_allow_html=True)
+    if data['vix_close'] <= 20:
+        st.success(f"🟢 VIX: {data['vix_close']:.1f} (Calm)")
+    elif data['vix_close'] <= 30:
+        st.warning(f"
