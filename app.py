@@ -746,14 +746,12 @@ st.markdown("""
         This is the most important question. The answer lies in <strong>risk management</strong> 
         and the <strong>psychological reality</strong> of investing:
     </p>
-    
     <div style="background:rgba(46,204,113,0.1); border-left:3px solid #2ecc71; padding:15px; margin:15px 0; border-radius:5px;">
         <p style="color:rgba(255,255,255,0.9); margin:0;">
             <strong>🔑 Key Insight:</strong> The Tactical Overlay cuts maximum drawdown <strong>from -33.7% to -21.4%</strong> 
             — a <strong>36% reduction</strong> in peak-to-trough loss.
         </p>
     </div>
-    
     <p style="color:rgba(255,255,255,0.8);">
         <strong>Why this matters:</strong>
     </p>
