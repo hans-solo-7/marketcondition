@@ -1,6 +1,7 @@
+
 # ============================================
 # MARKET CONDITION DASHBOARD - WITH S6 EXECUTION MATRIX
-# COMPLETE WORKING VERSION - FULLY FIXED
+# COMPLETE WORKING VERSION - FULLY REWRITTEN
 # ============================================
 
 import streamlit as st
@@ -510,41 +511,42 @@ with col1:
 with col2:
     etf = get_etf_config(data['s6_target'])
     
-    st.markdown(f"""
-    <div style="background:rgba(255,255,255,0.05); border-radius:15px; padding:20px; border:1px solid rgba(255,255,255,0.08); height:100%;">
-        <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 S6 Signal Details</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
-                <div style="font-size:18px; font-weight:700; color:#00cec9;">${data['spy_close']:.2f}</div>
-                <div style="font-size:11px; color:rgba(255,255,255,0.4);">SPY Price</div>
+    if etf:
+        st.markdown(f"""
+        <div style="background:rgba(255,255,255,0.05); border-radius:15px; padding:20px; border:1px solid rgba(255,255,255,0.08); height:100%;">
+            <div style="color:rgba(255,255,255,0.5); font-size:14px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 S6 Signal Details</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:18px; font-weight:700; color:#00cec9;">${data['spy_close']:.2f}</div>
+                    <div style="font-size:11px; color:rgba(255,255,255,0.4);">SPY Price</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:18px; font-weight:700; color:#fd79a8;">${data['sma200']:.2f}</div>
+                    <div style="font-size:11px; color:rgba(255,255,255,0.4);">200-day SMA</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:18px; font-weight:700; color:#fdcb6e;">{data['vix_close']:.1f}</div>
+                    <div style="font-size:11px; color:rgba(255,255,255,0.4);">VIX</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:18px; font-weight:700; color:#f39c12;">{data['gld_mom']*100:+.1f}%</div>
+                    <div style="font-size:11px; color:rgba(255,255,255,0.4);">GLD 60d Momentum</div>
+                </div>
             </div>
-            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
-                <div style="font-size:18px; font-weight:700; color:#fd79a8;">${data['sma200']:.2f}</div>
-                <div style="font-size:11px; color:rgba(255,255,255,0.4);">200-day SMA</div>
+            <div style="margin-top:10px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; text-align:center;">
+                <span style="color:rgba(255,255,255,0.3); font-size:12px;">
+                    SPY above 200 SMA: {'✅' if data['is_above_sma200'] else '❌'} | 
+                    SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
+                </span>
             </div>
-            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
-                <div style="font-size:18px; font-weight:700; color:#fdcb6e;">{data['vix_close']:.1f}</div>
-                <div style="font-size:11px; color:rgba(255,255,255,0.4);">VIX</div>
-            </div>
-            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; text-align:center;">
-                <div style="font-size:18px; font-weight:700; color:#f39c12;">{data['gld_mom']*100:+.1f}%</div>
-                <div style="font-size:11px; color:rgba(255,255,255,0.4);">GLD 60d Momentum</div>
+            <div style="margin-top:10px; padding:10px; background:rgba(108,92,231,0.1); border-radius:8px; text-align:center; border:1px solid {data['s6_color']};">
+                <div style="font-size:12px; color:rgba(255,255,255,0.4);">ETF to Execute</div>
+                <div style="font-size:22px; font-weight:700; color:{data['s6_color']};">{etf['ticker']}</div>
+                <div style="font-size:12px; color:rgba(255,255,255,0.6);">{etf['name']}</div>
+                <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']}</div>
             </div>
         </div>
-        <div style="margin-top:10px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; text-align:center;">
-            <span style="color:rgba(255,255,255,0.3); font-size:12px;">
-                SPY above 200 SMA: {'✅' if data['is_above_sma200'] else '❌'} | 
-                SPY above 50 EMA: {'✅' if data['is_above_ema50'] else '❌'}
-            </span>
-        </div>
-        <div style="margin-top:10px; padding:10px; background:rgba(108,92,231,0.1); border-radius:8px; text-align:center; border:1px solid {data['s6_color']};">
-            <div style="font-size:12px; color:rgba(255,255,255,0.4);">ETF to Execute</div>
-            <div style="font-size:22px; font-weight:700; color:{data['s6_color']};">{etf['ticker']}</div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.6);">{etf['name']}</div>
-            <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']}</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
@@ -571,7 +573,7 @@ with col4:
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
-# EXECUTION MATRIX TABLE - FULLY FIXED
+# EXECUTION MATRIX TABLE - USING PANDAS DATAFRAME
 # ============================================
 
 st.markdown("""
@@ -588,27 +590,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Build the execution table - COMPLETE VERSION
-table_html = """
-<div class="execution-table">
-    <table>
-        <thead>
-            <tr>
-                <th>Strategy Signal</th>
-                <th>Target Asset</th>
-                <th>European UCITS ETF</th>
-                <th>Ticker (IBKR / LSE)</th>
-                <th>Currency</th>
-                <th>ISIN</th>
-                <th>TER</th>
-                <th>Role in Strategy 6</th>
-            </tr>
-        </thead>
-        <tbody>
-"""
-
+# Create DataFrame for the execution matrix
+matrix_data = []
 for target, config in ETF_CONFIG.items():
-    # Determine the condition text
     if target == 'QQQ':
         condition = 'Calm Bull (SPY > SMA200 & VIX < 20)'
     elif target == 'SPY':
@@ -618,32 +602,43 @@ for target, config in ETF_CONFIG.items():
     else:
         condition = 'Defensive Regime (GLD 60d Mom <= 0)'
     
-    # Highlight current target
-    highlight = ' style="background:rgba(46,204,113,0.15);"' if target == data['s6_target'] else ''
+    is_current = target == data['s6_target']
     
-    table_html += f"""
-        <tr{highlight}>
-            <td><span class="signal-tag {config['tag']}">{target}</span></td>
-            <td><strong>{config['name']}</strong></td>
-            <td>{config['description']}</td>
-            <td><strong style="color:{data['s6_color'] if target == data['s6_target'] else 'white'};">{config['ticker']}</strong></td>
-            <td>{config['currency']}</td>
-            <td style="font-size:11px; color:rgba(255,255,255,0.6);">{config['isin']}</td>
-            <td style="color:{'#2ecc71' if target == data['s6_target'] else 'white'};">
-                {config['ter']}
-                {'' if target != data['s6_target'] else ' ✅'}
-            </td>
-            <td style="font-size:12px;">{condition}</td>
-        </tr>
-    """
+    matrix_data.append({
+        'Signal': target,
+        'Asset': config['name'],
+        'ETF Name': config['description'],
+        'Ticker': config['ticker'],
+        'Curr': config['currency'],
+        'TER': config['ter'],
+        'Role': condition,
+        '✅': '✅ Current' if is_current else ''
+    })
 
-table_html += """
-        </tbody>
-    </table>
-</div>
-"""
+df_matrix = pd.DataFrame(matrix_data)
 
-st.markdown(table_html, unsafe_allow_html=True)
+# Style the DataFrame
+def highlight_current(row):
+    if row['✅'] == '✅ Current':
+        return ['background-color: rgba(46,204,113,0.15)'] * len(row)
+    return [''] * len(row)
+
+st.dataframe(
+    df_matrix,
+    column_config={
+        "Signal": st.column_config.TextColumn("Strategy Signal", width="small"),
+        "Asset": st.column_config.TextColumn("Target Asset", width="medium"),
+        "ETF Name": st.column_config.TextColumn("European UCITS ETF", width="large"),
+        "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+        "Curr": st.column_config.TextColumn("Currency", width="small"),
+        "TER": st.column_config.TextColumn("TER", width="small"),
+        "Role": st.column_config.TextColumn("Role in Strategy 6", width="large"),
+        "✅": st.column_config.TextColumn("", width="small"),
+    },
+    hide_index=True,
+    use_container_width=True
+)
+
 # ============================================
 # EXECUTION RULES
 # ============================================
@@ -703,7 +698,7 @@ fig.add_trace(go.Scatter(x=data['vix_hist'].index, y=data['vix_hist'], name="VIX
 fig.add_hline(y=30, line_dash="dash", line_color="#d63031", annotation_text="Risk Threshold (30)", row=2, col=2)
 fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", annotation_text="Calm Threshold (20)", row=2, col=2)
 
-# 5. S6 Exposure - COMPLETELY REWRITTEN
+# 5. S6 Exposure
 s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
 
 for i in range(200, len(data['spy_hist'])):
@@ -722,7 +717,6 @@ for i in range(200, len(data['spy_hist'])):
 
 fig.add_trace(go.Scatter(x=s6_exposure.index, y=s6_exposure, name="S6 Target Exposure", line=dict(color='#6c5ce7', width=2), fill='tozeroy', fillcolor='rgba(108,92,231,0.2)'), row=3, col=1)
 fig.add_hline(y=1.0, line_dash="dot", line_color="#2ecc71", annotation_text="100%", row=3, col=1)
-fig.add_hline(y=0.5, line_dash="dot", line_color="#f39c12", annotation_text="50%", row=3, col=1)
 fig.add_hline(y=0.0, line_dash="dot", line_color="#e74c3c", annotation_text="0% (Cash)", row=3, col=1)
 
 # 6. BIL
