@@ -245,11 +245,11 @@ st.markdown("""
 ETF_CONFIG = {
     'QQQ': {
         'name': 'Nasdaq-100 (Tech)',
-        'ticker': 'CNDX',
+        'ticker': 'SXRV',
         'isin': 'IE00B53SZB19',
         'ter': '0.30%',
-        'exchange': 'LSE',
-        'currency': 'USD',
+        'exchange': 'Xetra',
+        'currency': 'EUR',
         'description': 'iShares Nasdaq 100 UCITS ETF (Acc)',
         'signal': 'Calm Bull',
         'condition': 'SPY > SMA200 & VIX < 20',
@@ -257,11 +257,11 @@ ETF_CONFIG = {
     },
     'SPY': {
         'name': 'S&P 500 (Core)',
-        'ticker': 'CSPX',
+        'ticker': 'SXR8',
         'isin': 'IE00B5BMR087',
         'ter': '0.07%',
-        'exchange': 'LSE',
-        'currency': 'USD',
+        'exchange': 'Xetra',
+        'currency': 'EUR',
         'description': 'iShares Core S&P 500 UCITS ETF (Acc)',
         'signal': 'Elevated Bull',
         'condition': 'SPY > SMA200 & 20 <= VIX < 30',
@@ -269,11 +269,11 @@ ETF_CONFIG = {
     },
     'GLD': {
         'name': 'Physical Gold',
-        'ticker': 'IGLN',
+        'ticker': 'EGLN',
         'isin': 'IE00B4ND3602',
         'ter': '0.12%',
         'exchange': 'LSE',
-        'currency': 'USD',
+        'currency': 'EUR',
         'description': 'iShares Physical Gold ETC',
         'signal': 'Defensive (Gold)',
         'condition': 'GLD 60d Momentum > 0',
@@ -281,11 +281,11 @@ ETF_CONFIG = {
     },
     'BIL': {
         'name': 'Cash / T-Bills',
-        'ticker': 'IB01',
+        'ticker': 'IBC1',
         'isin': 'IE00BGSF1X88',
         'ter': '0.07%',
-        'exchange': 'LSE',
-        'currency': 'USD',
+        'exchange': 'gettex',
+        'currency': 'EUR',
         'description': 'iShares $ Treasury 0-1yr UCITS ETF (Acc)',
         'signal': 'Defensive (Cash)',
         'condition': 'GLD 60d Momentum <= 0',
@@ -303,7 +303,7 @@ def get_etf_config(s6_target):
 # IMPORTANT:
 # Signal instruments are US-market proxies: SPY, QQQ, GLD and ^VIX.
 # Execution instruments are their European UCITS counterparts:
-# CNDX, CSPX, IGLN and IB01.
+# SXRV, SXR8, EGLN and IBC1.
 #
 # Signal data is daily and intentionally based on the latest COMPLETED
 # US trading session. It is not labelled as real-time.
@@ -312,10 +312,11 @@ def get_etf_config(s6_target):
 
 SIGNAL_TICKERS = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
 EXECUTION_TICKERS = {
-    "CNDX": ["CNDX.L"],
-    "CSPX": ["CSPX.L"],
-    "IGLN": ["IGLN.L"],
-    "IB01": ["IB01.L"],
+    # Confirmed by the user as tradable in their IBKR account.
+    "SXRV": ["SXRV.DE"],   # Xetra / EUR
+    "SXR8": ["SXR8.DE"],   # Xetra / EUR
+    "EGLN": ["EGLN.L"],    # LSE / EUR
+    "IBC1": ["IBC1.DE"],   # gettex / EUR
 }
 
 @st.cache_data(ttl=900)
@@ -538,12 +539,17 @@ def fetch_market_data():
                     "status": "UNAVAILABLE"
                 }
 
-        # Translate strategy signal names to actual execution instruments.
+        # Translate strategy signal names to the confirmed EUR execution
+        # instruments available in the user's IBKR account.
+        #
+        # IMPORTANT:
+        # These are EUR trading lines, NOT EUR-hedged versions.
+        # The strategy still derives its signals from SPY / QQQ / GLD / VIX.
         execution_map = {
-            "QQQ": "CNDX",
-            "SPY": "CSPX",
-            "GLD": "IGLN",
-            "BIL": "IB01"
+            "QQQ": "SXRV",   # Xetra / EUR
+            "SPY": "SXR8",   # Xetra / EUR
+            "GLD": "EGLN",   # LSE / EUR
+            "BIL": "IBC1"    # gettex / EUR
         }
 
         execution_ticker = execution_map[s6_target]
@@ -692,7 +698,7 @@ with col2:
             <div class="ticker">{etf['ticker'] if etf else '—'}</div>
             <div class="price">{('$' + format(execution_price, '.2f')) if execution_price is not None else 'PRICE UNAVAILABLE'}</div>
             <div class="meta">{etf['description'] if etf else ''} · {etf['exchange'] if etf else ''} · {etf['currency'] if etf else ''}</div>
-            <div class="meta">Latest available daily close · Yahoo Finance</div>
+            <div class="meta">Latest available market price · Yahoo Finance</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -702,11 +708,11 @@ with col2:
 # ============================================
 
 st.markdown('<div class="section-kicker" style="margin-top:28px;">Execution Universe</div>', unsafe_allow_html=True)
-st.markdown('<div class="panel-title" style="margin-bottom:4px;">European UCITS instruments</div>', unsafe_allow_html=True)
+st.markdown('<div class="panel-title" style="margin-bottom:4px;">EUR UCITS trading lines</div>', unsafe_allow_html=True)
 st.caption("Signal instruments are US proxies. Trades are executed in the corresponding European instruments.")
 
 exec_rows = []
-for strategy_key, execution_key in {"QQQ": "CNDX", "SPY": "CSPX", "GLD": "IGLN", "BIL": "IB01"}.items():
+for strategy_key, execution_key in {"QQQ": "SXRV", "SPY": "SXR8", "GLD": "EGLN", "BIL": "IBC1"}.items():
     p = data["live_prices"].get(execution_key)
     meta = data["execution_meta"].get(execution_key, {})
     exec_rows.append({
