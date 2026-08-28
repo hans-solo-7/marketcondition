@@ -1179,50 +1179,45 @@ st.markdown(
 method_col, results_col = st.columns([1.0, 1.25], gap="large")
 
 with method_col:
-    st.markdown("""
-    <div class="rule-card" style="height:100%;">
-        <div class="rule-title">The S6 decision sequence</div>
+    st.markdown("#### The S6 decision sequence")
+    st.markdown(
+        """
+        **1 · Determine the regime.**  
+        The model remains in **EQUITY** state until either SPY falls below
+        its 200-day SMA or VIX reaches 30.
 
-        <div class="rule-text"><strong>1 · Determine the regime.</strong>
-        The model remains in EQUITY state until either SPY falls below its
-        200-day SMA or VIX reaches 30.</div>
+        **2 · Re-entry is deliberately harder.**  
+        Once defensive, the model returns to **EQUITY** only when SPY is
+        above its 50-day EMA and VIX is below 25.
 
-        <div class="rule-text"><strong>2 · Re-entry is deliberately harder.</strong>
-        Once defensive, the model returns to EQUITY only when SPY is above its
-        50-day EMA and VIX is below 25.</div>
+        **3 · Choose the exposure.**  
+        In EQUITY state, VIX < 20 selects **QQQ**; 20 ≤ VIX < 30 selects
+        **SPY**. In DEFENSIVE state, positive 60-day GLD momentum selects
+        **GLD**; otherwise **BIL**.
 
-        <div class="rule-text"><strong>3 · Choose the exposure.</strong>
-        In EQUITY state, VIX &lt; 20 selects QQQ; 20 ≤ VIX &lt; 30 selects SPY.
-        In DEFENSIVE state, positive 60-day GLD momentum selects GLD;
-        otherwise BIL.</div>
-
-        <div class="rule-text"><strong>4 · Execute in EUR.</strong>
+        **4 · Execute in EUR.**  
         The signal is calculated from US-market proxies. The corresponding
         trade is placed in the confirmed EUR IBKR trading line:
-        QQQ → SXRV · SPY → SXR8 · GLD → EGLN · BIL → IBC1.</div>
+        **QQQ → SXRV · SPY → SXR8 · GLD → EGLN · BIL → IBC1.**
 
-        <div class="rule-text"><strong>5 · Timing.</strong>
-        A completed US-session signal is actionable on the following execution
-        session. The model does not use the next day's information to create
-        the signal.</div>
-    </div>
-    """, unsafe_allow_html=True)
+        **5 · Timing.**  
+        A completed US-session signal is actionable on the following
+        execution session. The model does not use the next day's
+        information to create the signal.
+        """
+    )
 
 if backtest is not None:
     s6m = backtest["s6_metrics"]
     spym = backtest["spy_metrics"]
 
     with results_col:
-        st.markdown("""
-        <div class="rule-card">
-            <div class="rule-title">10-year proxy backtest vs SPY</div>
-            <div class="rule-text">
-                Signal rules use SPY / QQQ / GLD / VIX. Performance uses adjusted
-                total-return prices for SPY / QQQ / GLD / BIL. The signal on day t
-                is applied to day t+1.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("#### 10-year proxy backtest vs SPY")
+        st.caption(
+            "Signal rules use SPY / QQQ / GLD / VIX. Performance uses adjusted "
+            "total-return prices for SPY / QQQ / GLD / BIL. The signal on day t "
+            "is applied to day t+1."
+        )
 
         m1, m2, m3, m4 = st.columns(4)
         with m1:
@@ -1256,8 +1251,7 @@ if backtest is not None:
         x=backtest["spy_curve"].index,
         y=backtest["spy_curve"],
         name="SPY",
-        line=dict(color="#77776f", width=2),
-        dash="dash"
+        line=dict(color="#77776f", width=2, dash="dash")
     ))
     bt_fig.update_layout(
         height=430,
