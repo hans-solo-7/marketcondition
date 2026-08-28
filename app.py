@@ -342,33 +342,76 @@ def get_etf_config(s6_target):
     return ETF_CONFIG.get(s6_target, None)
 
 # ============================================
-# DATA FETCHING WITH ASYMMETRIC RE-ENTRY LOGIC
+# DATA FETCHING / VALIDATION
 # ============================================
 
-@st.cache_data(ttl=1800)
+# IMPORTANT:
+# Signal instruments are US-market proxies: SPY, QQQ, GLD and ^VIX.
+# Execution instruments are their European UCITS counterparts:
+# CNDX, CSPX, IGLN and IB01.
+#
+# Signal data is daily and intentionally based on the latest COMPLETED
+# US trading session. It is not labelled as real-time.
+# Execution prices are fetched separately and are never silently replaced
+# by hard-coded fallback prices.
+
+SIGNAL_TICKERS = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
+EXECUTION_TICKERS = {
+    "CNDX": ["CNDX.L"],
+    "CSPX": ["CSPX.L"],
+    "IGLN": ["IGLN.L"],
+    "IB01": ["IB01.L"],
+}
+
+@st.cache_data(ttl=900)
 def fetch_market_data():
     try:
-        # Fetch US Signal Tickers
-        tickers = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
-        df = yf.download(tickers, period="2y", interval="1d", progress=False)
-        
-        if isinstance(df.columns, pd.MultiIndex):
-            closes = df["Close"].copy()
+        raw = yf.download(
+            SIGNAL_TICKERS,
+            period="2y",
+            interval="1d",
+            auto_adjust=False,
+            progress=False,
+            threads=True
+        )
+
+        if raw.empty:
+            raise ValueError("Yahoo Finance returned no signal data.")
+
+        if isinstance(raw.columns, pd.MultiIndex):
+            if "Close" not in raw.columns.get_level_values(0):
+                raise ValueError("Signal data has no Close field.")
+            closes = raw["Close"].copy()
         else:
-            closes = df.copy()
-        
-        closes = closes.ffill().dropna()
-        
+            closes = raw.copy()
+
+        required = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
+        missing = [t for t in required if t not in closes.columns]
+        if missing:
+            raise ValueError(f"Missing signal tickers: {', '.join(missing)}")
+
+        # Do NOT forward-fill market prices. Each signal is evaluated on
+        # observations where all required instruments actually have data.
+        closes = closes[required].dropna(how="any")
+
+        if len(closes) < 250:
+            raise ValueError(
+                f"Insufficient history ({len(closes)} sessions). Need at least 250."
+            )
+
         spy = closes["SPY"]
         qqq = closes["QQQ"]
         gld = closes["GLD"]
         bil = closes["BIL"]
         vix = closes["^VIX"]
-        
-        sma200_spy = spy.rolling(window=200).mean()
-        ema50_spy = spy.ewm(span=50, adjust=False).mean()
+
+        sma200_spy = spy.rolling(window=200, min_periods=200).mean()
+        ema50_spy = spy.ewm(span=50, adjust=False, min_periods=50).mean()
         gld_mom = gld.pct_change(60)
-        
+
+        # Latest completed common US session.
+        last_date = closes.index[-1]
+
         current_spy = float(spy.iloc[-1])
         current_qqq = float(qqq.iloc[-1])
         current_gld = float(gld.iloc[-1])
@@ -377,68 +420,88 @@ def fetch_market_data():
         current_sma200 = float(sma200_spy.iloc[-1])
         current_ema50 = float(ema50_spy.iloc[-1])
         current_gld_mom = float(gld_mom.iloc[-1])
-        last_date = closes.index[-1]
-        
+
+        if any(pd.isna(x) for x in [
+            current_sma200, current_ema50, current_gld_mom
+        ]):
+            raise ValueError("Required indicators are not available for latest session.")
+
         # ========================================
-        # ASYMMETRIC RE-ENTRY STATE MACHINE (S5)
+        # ASYMMETRIC RE-ENTRY STATE MACHINE
         # ========================================
-        # EXIT:  SPY < 200 SMA OR VIX >= 30
+        # EXIT:     SPY < 200 SMA OR VIX >= 30
         # RE-ENTER: SPY > 50 EMA AND VIX < 25
+        #
+        # Signals are generated from completed daily bars. The resulting
+        # state is therefore actionable on the NEXT execution session.
         # ========================================
+
         in_equity_state = 1
-        for i in range(200, len(spy)):
-            p = spy.iloc[i]
+        exposure_history = pd.Series(np.nan, index=closes.index, dtype=float)
+
+        for i in range(len(closes)):
             s200 = sma200_spy.iloc[i]
             e50 = ema50_spy.iloc[i]
             v = vix.iloc[i]
-            
+            p = spy.iloc[i]
+
             if pd.isna(s200) or pd.isna(e50):
                 continue
-                
+
             if in_equity_state == 1:
-                # EXIT: SPY below 200 SMA OR VIX >= 30
                 if p < s200 or v >= 30:
                     in_equity_state = 0
             else:
-                # RE-ENTER: SPY above 50 EMA AND VIX < 25
                 if p > e50 and v < 25:
                     in_equity_state = 1
-        
+
+            exposure_history.iloc[i] = float(in_equity_state)
+
         is_above_sma200 = current_spy > current_sma200
         is_above_ema50 = current_spy > current_ema50
-        
+
         # ========================================
         # S6 SIGNAL ALLOCATION LOGIC
         # ========================================
         if in_equity_state == 0:
-            # Defensive Regime
             if current_gld_mom > 0:
                 s6_target = "GLD"
-                s6_reason = f"Defensive State active -> Gold 60d momentum positive ({current_gld_mom*100:+.1f}%)"
+                s6_reason = (
+                    f"Defensive State active -> Gold 60d momentum positive "
+                    f"({current_gld_mom*100:+.1f}%)"
+                )
                 s6_color = "#f39c12"
                 s6_class = "signal-gld"
                 s6_emoji = "🪙"
             else:
                 s6_target = "BIL"
-                s6_reason = f"Defensive State active -> Gold 60d momentum negative ({current_gld_mom*100:+.1f}%)"
+                s6_reason = (
+                    f"Defensive State active -> Gold 60d momentum negative "
+                    f"({current_gld_mom*100:+.1f}%)"
+                )
                 s6_color = "#0984e3"
                 s6_class = "signal-bil"
                 s6_emoji = "🏦"
         else:
-            # Equity Regime
             if current_vix < 20:
                 s6_target = "QQQ"
-                s6_reason = f"Calm Bull active (VIX < 20: {current_vix:.1f}) -> 100% Tech Exposure"
+                s6_reason = (
+                    f"Calm Bull active (VIX < 20: {current_vix:.1f}) "
+                    "-> 100% Tech Exposure"
+                )
                 s6_color = "#6c5ce7"
                 s6_class = "signal-qqq"
                 s6_emoji = "🚀"
             else:
                 s6_target = "SPY"
-                s6_reason = f"Elevated Bull active (20 <= VIX < 30: {current_vix:.1f}) -> 100% Core Equity"
+                s6_reason = (
+                    f"Elevated Bull active (20 <= VIX < 30: {current_vix:.1f}) "
+                    "-> 100% Core Equity"
+                )
                 s6_color = "#00cec9"
                 s6_class = "regime-bull"
                 s6_emoji = "🐂"
-        
+
         # ========================================
         # ORIGINAL REGIME (for comparison)
         # ========================================
@@ -466,63 +529,122 @@ def fetch_market_data():
             signal_desc = "All indicators normal"
             action_text = "HOLD 100% - Continue holding"
             regime_class = "regime-bull"
-        
+
         # ========================================
-        # FETCH LIVE PRICES FOR EXECUTION TICKERS
+        # EXECUTION PRICES — SEPARATE FROM SIGNAL DATA
         # ========================================
         live_prices = {}
-        for key, config in ETF_CONFIG.items():
-            ticker = config['ticker']
-            try:
-                # Try .L suffix for LSE
-                for t in [ticker, f"{ticker}.L"]:
-                    try:
-                        temp = yf.Ticker(t)
-                        hist = temp.history(period="5d")
-                        if len(hist) > 0:
-                            live_prices[ticker] = float(hist['Close'].iloc[-1])
-                            break
-                    except:
+        execution_meta = {}
+
+        for ticker, candidates in EXECUTION_TICKERS.items():
+            found = False
+
+            for t in candidates:
+                try:
+                    hist = yf.Ticker(t).history(
+                        period="5d",
+                        interval="1d",
+                        auto_adjust=False
+                    )
+
+                    if hist.empty or "Close" not in hist.columns:
                         continue
-                if ticker not in live_prices:
-                    live_prices[ticker] = config['price']
-            except:
-                live_prices[ticker] = config['price']
-        
-        return {
-            'spy_close': current_spy,
-            'qqq_close': current_qqq,
-            'gld_close': current_gld,
-            'bil_close': current_bil,
-            'vix_close': current_vix,
-            'sma200': current_sma200,
-            'ema50': current_ema50,
-            'gld_mom': current_gld_mom,
-            'date': last_date,
-            'spy_hist': closes['SPY'],
-            'qqq_hist': closes['QQQ'],
-            'gld_hist': closes['GLD'],
-            'vix_hist': closes['^VIX'],
-            'bil_hist': closes['BIL'],
-            's6_target': s6_target,
-            's6_reason': s6_reason,
-            's6_color': s6_color,
-            's6_class': s6_class,
-            's6_emoji': s6_emoji,
-            'is_above_sma200': is_above_sma200,
-            'is_above_ema50': is_above_ema50,
-            'in_equity_state': in_equity_state,
-            'live_prices': live_prices,
-            'target': target,
-            'signal_emoji': signal_emoji,
-            'signal_color': signal_color,
-            'signal_label': signal_label,
-            'signal_desc': signal_desc,
-            'action_text': action_text,
-            'regime_class': regime_class,
-            'success': True,
-            'data_source': 'real'
+
+                    close_series = hist["Close"].dropna()
+                    if close_series.empty:
+                        continue
+
+                    execution_price = float(close_series.iloc[-1])
+                    execution_date = close_series.index[-1]
+
+                    if not np.isfinite(execution_price) or execution_price <= 0:
+                        continue
+
+                    live_prices[ticker] = execution_price
+                    execution_meta[ticker] = {
+                        "symbol": t,
+                        "date": execution_date,
+                        "source": "Yahoo Finance",
+                        "status": "latest available daily close"
+                    }
+                    found = True
+                    break
+
+                except Exception:
+                    continue
+
+            if not found:
+                # Never use the old hard-coded prices as a fallback.
+                live_prices[ticker] = None
+                execution_meta[ticker] = {
+                    "symbol": candidates[0],
+                    "date": None,
+                    "source": "Yahoo Finance",
+                    "status": "UNAVAILABLE"
+                }
+
+        # Translate strategy signal names to actual execution instruments.
+        execution_map = {
+            "QQQ": "CNDX",
+            "SPY": "CSPX",
+            "GLD": "IGLN",
+            "BIL": "IB01"
         }
+
+        execution_ticker = execution_map[s6_target]
+        execution_price = live_prices.get(execution_ticker)
+
+        return {
+            # Signal market
+            "spy_close": current_spy,
+            "qqq_close": current_qqq,
+            "gld_close": current_gld,
+            "bil_close": current_bil,
+            "vix_close": current_vix,
+            "sma200": current_sma200,
+            "ema50": current_ema50,
+            "gld_mom": current_gld_mom,
+            "date": last_date,
+
+            "spy_hist": spy,
+            "qqq_hist": qqq,
+            "gld_hist": gld,
+            "vix_hist": vix,
+            "bil_hist": bil,
+
+            # One source of truth for historical S6 state
+            "s6_exposure_hist": exposure_history,
+
+            # Current strategy state
+            "s6_target": s6_target,
+            "s6_reason": s6_reason,
+            "s6_color": s6_color,
+            "s6_class": s6_class,
+            "s6_emoji": s6_emoji,
+            "is_above_sma200": is_above_sma200,
+            "is_above_ema50": is_above_ema50,
+            "in_equity_state": in_equity_state,
+
+            # Execution instruments
+            "live_prices": live_prices,
+            "execution_meta": execution_meta,
+            "execution_ticker": execution_ticker,
+            "execution_price": execution_price,
+
+            # Original regime
+            "target": target,
+            "signal_emoji": signal_emoji,
+            "signal_color": signal_color,
+            "signal_label": signal_label,
+            "signal_desc": signal_desc,
+            "action_text": action_text,
+            "regime_class": regime_class,
+
+            "success": True,
+            "data_source": "Yahoo Finance",
+            "data_status": "latest completed US session for signals"
+        }
+
     except Exception as e:
         st.error(f"Data Fetch Error: {e}")
         return None
@@ -535,20 +657,21 @@ if data is None:
     st.stop()
 
 # ============================================
-# UPDATE ETF CONFIG WITH LIVE PRICES
+# DATA STATUS
 # ============================================
 
-for key, config in ETF_CONFIG.items():
-    ticker = config['ticker']
-    if ticker in data.get('live_prices', {}):
-        config['price'] = data['live_prices'][ticker]
-
-# ============================================
-# DATA SOURCE BADGE
-# ============================================
-
-st.markdown('<div style="text-align:center; margin-bottom:5px;"><span class="data-source-badge badge-real">✅ LIVE DATA</span></div>', unsafe_allow_html=True)
-st.markdown(f'<p style="text-align:center; color: rgba(255,255,255,0.4); font-size:13px;">Last updated: {data["date"].strftime("%Y-%m-%d %H:%M")} ET</p>', unsafe_allow_html=True)
+st.markdown(
+    '<div style="text-align:center; margin-bottom:5px;">'
+    '<span class="data-source-badge badge-real">✅ VERIFIED MARKET DATA</span>'
+    '</div>',
+    unsafe_allow_html=True
+)
+st.markdown(
+    f'<p style="text-align:center; color: rgba(255,255,255,0.4); font-size:13px;">'
+    f'Signal data: {data["date"].strftime("%Y-%m-%d")} US close · '
+    f'Yahoo Finance · Daily data</p>',
+    unsafe_allow_html=True
+)
 
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
@@ -642,6 +765,36 @@ with col2:
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
 # ============================================
+# EXECUTION INSTRUMENT STATUS
+# ============================================
+
+st.markdown("### 💱 European Execution Instruments")
+exec_rows = []
+for strategy_key, execution_key in {
+    "QQQ": "CNDX", "SPY": "CSPX", "GLD": "IGLN", "BIL": "IB01"
+}.items():
+    p = data["live_prices"].get(execution_key)
+    meta = data["execution_meta"].get(execution_key, {})
+    exec_rows.append({
+        "Signal": strategy_key,
+        "Execution ETF": execution_key,
+        "Price": f"${p:.2f}" if p is not None else "🔴 UNAVAILABLE",
+        "Data": meta.get("status", "UNAVAILABLE"),
+        "Symbol": meta.get("symbol", execution_key),
+    })
+
+st.dataframe(
+    pd.DataFrame(exec_rows),
+    hide_index=True,
+    use_container_width=True
+)
+
+st.caption(
+    "Signal prices/indicators use US-market proxies. Execution prices use the "
+    "European UCITS counterparts. Signal and execution instruments are intentionally different."
+)
+
+# ============================================
 # METRICS ROW
 # ============================================
 
@@ -700,54 +853,65 @@ with col2:
 target_etf = get_etf_config(data['s6_target'])
 
 if target_etf:
-    price = target_etf['price']
     ticker = target_etf['ticker']
     name = target_etf['name']
-    shares = portfolio_size / price
-    total_cost = shares * price
-    
-    st.markdown(f"""
-    <div class="order-plan">
-        <h4 style="color:white; margin-top:0;">📊 Execution Plan</h4>
-        <table>
-            <thead>
-                <tr>
-                    <th>Action</th>
-                    <th>ETF</th>
-                    <th>Ticker</th>
-                    <th>Price</th>
-                    <th>Shares</th>
-                    <th>Total Cost</th>
-                    <th>Allocation</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><span class="action-buy">BUY</span></td>
-                    <td>{name}</td>
-                    <td><strong>{ticker}</strong></td>
-                    <td>${price:.2f}</td>
-                    <td>{shares:.2f}</td>
-                    <td>${total_cost:,.2f}</td>
-                    <td>100.0%</td>
-                </tr>
-            </tbody>
-        </table>
-        <div style="margin-top:15px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; display:flex; justify-content:space-between; flex-wrap:wrap;">
-            <span style="color:rgba(255,255,255,0.5); font-size:12px;">
-                ISIN: {target_etf['isin']} | Exchange: {target_etf['exchange']}
-            </span>
-            <span style="color:rgba(255,255,255,0.5); font-size:12px;">
-                TER: {target_etf['ter']} | Currency: {target_etf['currency']}
-            </span>
-            <span style="color:rgba(255,255,255,0.5); font-size:12px;">
-                Portfolio: ${portfolio_size:,.2f} → Target: ${total_cost:,.2f}
-            </span>
+    price = data.get('execution_price')
+
+    if price is None:
+        st.error(
+            f"🔴 Execution price unavailable for {ticker}. "
+            "No order calculation is generated."
+        )
+    else:
+        shares = portfolio_size / price
+        total_cost = shares * price
+
+        st.markdown(f"""
+        <div class="order-plan">
+            <h4 style="color:white; margin-top:0;">📊 Execution Plan</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>ETF</th>
+                        <th>Ticker</th>
+                        <th>Price</th>
+                        <th>Shares</th>
+                        <th>Total Cost</th>
+                        <th>Allocation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="action-buy">BUY</span></td>
+                        <td>{name}</td>
+                        <td><strong>{ticker}</strong></td>
+                        <td>${price:.2f}</td>
+                        <td>{shares:.2f}</td>
+                        <td>${total_cost:,.2f}</td>
+                        <td>100.0%</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div style="margin-top:15px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; display:flex; justify-content:space-between; flex-wrap:wrap;">
+                <span style="color:rgba(255,255,255,0.5); font-size:12px;">
+                    ISIN: {target_etf['isin']} | Exchange: {target_etf['exchange']}
+                </span>
+                <span style="color:rgba(255,255,255,0.5); font-size:12px;">
+                    TER: {target_etf['ter']} | Currency: {target_etf['currency']}
+                </span>
+                <span style="color:rgba(255,255,255,0.5); font-size:12px;">
+                    Portfolio: ${portfolio_size:,.2f} → Target: ${total_cost:,.2f}
+                </span>
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.info(f"📈 **BUY Order:** Place a **limit order** for {shares:.2f} shares of {ticker} at or near ${price:.2f}. Total cost: ${total_cost:,.2f}.")
+        """, unsafe_allow_html=True)
+
+        st.info(
+            f"📈 **BUY Order:** Place a **limit order** for {shares:.2f} shares "
+            f"of {ticker} at or near ${price:.2f}. Total cost: ${total_cost:,.2f}. "
+            f"Price source: Yahoo Finance latest available daily close."
+        )
 else:
     st.warning("⚠️ No order book plan generated. Please check your configuration.")
 
@@ -791,6 +955,11 @@ for target, config in ETF_CONFIG.items():
         'Ticker': config['ticker'],
         'Curr': config['currency'],
         'TER': config['ter'],
+        'Execution Price': (
+            f"${data['live_prices'].get(config['ticker']):.2f}"
+            if data['live_prices'].get(config['ticker']) is not None
+            else "UNAVAILABLE"
+        ),
         'Role': condition,
         '✅': '✅ Current' if is_current else ''
     })
@@ -806,6 +975,7 @@ st.dataframe(
         "Ticker": st.column_config.TextColumn("Ticker", width="small"),
         "Curr": st.column_config.TextColumn("Currency", width="small"),
         "TER": st.column_config.TextColumn("TER", width="small"),
+        "Execution Price": st.column_config.TextColumn("Latest Exec. Price", width="small"),
         "Role": st.column_config.TextColumn("Role in Strategy 6", width="large"),
         "✅": st.column_config.TextColumn("", width="small"),
     },
@@ -822,8 +992,8 @@ st.markdown("""
     <h4 style="color:#6c5ce7; margin-top:0;">⏰ Execution Rule on IBKR</h4>
     <div style="background:rgba(108,92,231,0.1); border-left:3px solid #6c5ce7; padding:15px; margin:10px 0; border-radius:5px;">
         <p style="color:rgba(255,255,255,0.9); margin:0;">
-            <strong>Execution Window:</strong> Place your trades between <strong>15:30 and 17:30 CET</strong> 
-            (09:30 to 11:30 EST). This window covers the simultaneous open of the London Stock Exchange and the 
+            <strong>Execution Window:</strong> Place your trades between <strong>15:30 and 17:30 CEST (summer) / 14:30 and 16:30 CET (winter)</strong> 
+            (09:30 to 11:30 ET). This window covers the simultaneous open of the London Stock Exchange and the 
             New York market, ensuring maximum market-maker liquidity and penny-wide spreads on all four tickers.
         </p>
     </div>
@@ -872,26 +1042,29 @@ fig.add_trace(go.Scatter(x=data['vix_hist'].index, y=data['vix_hist'], name="VIX
 fig.add_hline(y=30, line_dash="dash", line_color="#d63031", annotation_text="Risk Threshold (30)", row=2, col=2)
 fig.add_hline(y=20, line_dash="dot", line_color="#fdcb6e", annotation_text="Calm Threshold (20)", row=2, col=2)
 
-# 5. S6 Exposure
-s6_exposure = pd.Series(1.0, index=data['spy_hist'].index)
+# 5. S6 Exposure — exact same state machine used by the live signal
+s6_exposure = data['s6_exposure_hist']
 
-for i in range(200, len(data['spy_hist'])):
-    if i < len(data['vix_hist']):
-        spy_val = data['spy_hist'].iloc[i]
-        sma_val = data['spy_hist'].rolling(200).mean().iloc[i]
-        vix_val = data['vix_hist'].iloc[i]
-        
-        if pd.isna(sma_val) or pd.isna(vix_val):
-            continue
-        
-        if vix_val >= 30 or spy_val < sma_val:
-            s6_exposure.iloc[i] = 0.0
-        else:
-            s6_exposure.iloc[i] = 1.0
-
-fig.add_trace(go.Scatter(x=s6_exposure.index, y=s6_exposure, name="S6 Target Exposure", line=dict(color='#6c5ce7', width=2), fill='tozeroy', fillcolor='rgba(108,92,231,0.2)'), row=3, col=1)
-fig.add_hline(y=1.0, line_dash="dot", line_color="#2ecc71", annotation_text="100%", row=3, col=1)
-fig.add_hline(y=0.0, line_dash="dot", line_color="#e74c3c", annotation_text="0% (Cash)", row=3, col=1)
+fig.add_trace(
+    go.Scatter(
+        x=s6_exposure.index,
+        y=s6_exposure,
+        name="S6 Equity State",
+        line=dict(color='#6c5ce7', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(108,92,231,0.2)',
+        connectgaps=False
+    ),
+    row=3, col=1
+)
+fig.add_hline(
+    y=1.0, line_dash="dot", line_color="#2ecc71",
+    annotation_text="Equity", row=3, col=1
+)
+fig.add_hline(
+    y=0.0, line_dash="dot", line_color="#e74c3c",
+    annotation_text="Defensive", row=3, col=1
+)
 
 # 6. BIL
 fig.add_trace(go.Scatter(x=data['bil_hist'].index, y=data['bil_hist'], name="BIL (Cash)", line=dict(color='#0984e3', width=2)), row=3, col=2)
