@@ -319,6 +319,184 @@ EXECUTION_TICKERS = {
     "IBC1": ["IBC1.DE"],   # gettex / EUR
 }
 
+
+@st.cache_data(ttl=86400)
+def fetch_10y_backtest():
+    """
+    10-year S6 proxy backtest.
+
+    Methodology:
+    - Signal rules use unadjusted daily closes for SPY / QQQ / GLD / BIL / VIX.
+    - Investment returns use adjusted closes for SPY / QQQ / GLD / BIL so
+      distributions are included.
+    - The signal calculated after the US close on day t is applied to the
+      return on day t+1. This avoids same-day look-ahead.
+    - The strategy is 100% invested in exactly one of QQQ, SPY, GLD or BIL.
+    - No transaction costs, slippage, taxes, FX effects, bid/ask spread or
+      differences between US signal proxies and the European execution lines
+      are included.
+    """
+    tickers = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
+
+    raw = yf.download(
+        tickers,
+        period="15y",
+        interval="1d",
+        auto_adjust=False,
+        progress=False,
+        threads=True
+    )
+
+    if raw.empty:
+        raise ValueError("Yahoo Finance returned no backtest data.")
+
+    if not isinstance(raw.columns, pd.MultiIndex):
+        raise ValueError("Unexpected Yahoo Finance backtest column format.")
+
+    if "Close" not in raw.columns.get_level_values(0):
+        raise ValueError("Backtest data has no Close field.")
+
+    if "Adj Close" not in raw.columns.get_level_values(0):
+        raise ValueError("Backtest data has no Adj Close field.")
+
+    close = raw["Close"].copy()
+    adj = raw["Adj Close"].copy()
+
+    required = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
+    missing = [t for t in required if t not in close.columns]
+    if missing:
+        raise ValueError(f"Missing backtest tickers: {', '.join(missing)}")
+
+    close = close[required].dropna(how="any")
+    adj_assets = adj[["SPY", "QQQ", "GLD", "BIL"]].reindex(close.index)
+    adj_assets = adj_assets.dropna(how="any")
+
+    common_index = close.index.intersection(adj_assets.index)
+    close = close.loc[common_index]
+    adj_assets = adj_assets.loc[common_index]
+
+    if len(close) < 10 * 252:
+        raise ValueError(
+            f"Insufficient history for 10-year backtest: {len(close)} sessions."
+        )
+
+    spy = close["SPY"]
+    qqq = close["QQQ"]
+    gld = close["GLD"]
+    vix = close["^VIX"]
+
+    sma200 = spy.rolling(200, min_periods=200).mean()
+    ema50 = spy.ewm(span=50, adjust=False, min_periods=50).mean()
+    gld_mom = gld.pct_change(60)
+
+    # Same asymmetric state machine as the live strategy.
+    equity_state = 1
+    states = pd.Series(np.nan, index=close.index, dtype=float)
+    targets = pd.Series(index=close.index, dtype="object")
+
+    for i in range(len(close)):
+        if pd.isna(sma200.iloc[i]) or pd.isna(ema50.iloc[i]) or pd.isna(gld_mom.iloc[i]):
+            continue
+
+        p = float(spy.iloc[i])
+        s200 = float(sma200.iloc[i])
+        e50 = float(ema50.iloc[i])
+        v = float(vix.iloc[i])
+
+        if equity_state == 1:
+            if p < s200 or v >= 30:
+                equity_state = 0
+        else:
+            if p > e50 and v < 25:
+                equity_state = 1
+
+        states.iloc[i] = float(equity_state)
+
+        if equity_state == 0:
+            targets.iloc[i] = "GLD" if gld_mom.iloc[i] > 0 else "BIL"
+        else:
+            targets.iloc[i] = "QQQ" if v < 20 else "SPY"
+
+    # Keep only the requested 10-year window, while retaining warm-up
+    # history before the window so the indicators are fully formed.
+    end_date = close.index[-1]
+    start_date = end_date - pd.DateOffset(years=10)
+
+    bt_dates = close.index[close.index >= start_date]
+    if len(bt_dates) < 2:
+        raise ValueError("Unable to construct the 10-year backtest window.")
+
+    # Signal on t -> hold selected asset during t+1.
+    next_day_returns = adj_assets.pct_change().shift(-1)
+
+    strategy_returns = pd.Series(np.nan, index=bt_dates, dtype=float)
+    benchmark_returns = pd.Series(np.nan, index=bt_dates, dtype=float)
+
+    for date in bt_dates:
+        target = targets.loc[date]
+        if pd.isna(target):
+            continue
+        strategy_returns.loc[date] = next_day_returns.loc[date, target]
+        benchmark_returns.loc[date] = next_day_returns.loc[date, "SPY"]
+
+    valid = strategy_returns.notna() & benchmark_returns.notna()
+    strategy_returns = strategy_returns.loc[valid]
+    benchmark_returns = benchmark_returns.loc[valid]
+
+    if len(strategy_returns) < 9 * 252:
+        raise ValueError(
+            f"Backtest window contains only {len(strategy_returns)} usable sessions."
+        )
+
+    strategy_curve = (1 + strategy_returns).cumprod() * 100.0
+    spy_curve = (1 + benchmark_returns).cumprod() * 100.0
+
+    def metrics(returns, curve):
+        years = len(returns) / 252.0
+        total_return = float(curve.iloc[-1] / 100.0 - 1.0)
+        cagr = float((curve.iloc[-1] / 100.0) ** (1.0 / years) - 1.0)
+        vol = float(returns.std(ddof=1) * np.sqrt(252))
+        sharpe = float(
+            (returns.mean() / returns.std(ddof=1)) * np.sqrt(252)
+        ) if returns.std(ddof=1) > 0 else np.nan
+
+        drawdown = curve / curve.cummax() - 1.0
+        max_dd = float(drawdown.min())
+
+        return {
+            "total_return": total_return,
+            "cagr": cagr,
+            "volatility": vol,
+            "sharpe": sharpe,
+            "max_drawdown": max_dd,
+            "ending_value": float(curve.iloc[-1]),
+        }
+
+    s6_metrics = metrics(strategy_returns, strategy_curve)
+    spy_metrics = metrics(benchmark_returns, spy_curve)
+
+    # Calendar-year returns for the compact results table.
+    annual = pd.DataFrame({
+        "S6": strategy_returns,
+        "SPY": benchmark_returns
+    })
+    annual.index = pd.to_datetime(annual.index)
+    annual_returns = annual.groupby(annual.index.year).apply(
+        lambda x: (1 + x).prod() - 1
+    )
+
+    return {
+        "start_date": strategy_returns.index[0],
+        "end_date": strategy_returns.index[-1],
+        "strategy_returns": strategy_returns,
+        "benchmark_returns": benchmark_returns,
+        "strategy_curve": strategy_curve,
+        "spy_curve": spy_curve,
+        "s6_metrics": s6_metrics,
+        "spy_metrics": spy_metrics,
+        "annual_returns": annual_returns,
+    }
+
 @st.cache_data(ttl=900)
 def fetch_market_data():
     try:
@@ -617,6 +795,13 @@ if data is None:
     st.error("Failed to fetch data. Please try again.")
     st.stop()
 
+with st.spinner("Building 10-year S6 backtest..."):
+    try:
+        backtest = fetch_10y_backtest()
+    except Exception as e:
+        backtest = None
+        st.warning(f"10-year backtest unavailable: {e}")
+
 # ============================================
 # DATA STATUS
 # ============================================
@@ -624,7 +809,7 @@ if data is None:
 st.markdown(f"""
 <div style="display:flex; justify-content:space-between; align-items:center; margin:4px 0 18px; color:#77776f; font-size:11px;">
     <div>Signal data: <strong>{data['date'].strftime('%d %b %Y')} US close</strong> · Yahoo Finance · Daily observations</div>
-    <div>Execution data: latest available daily close</div>
+    <div>Execution data: latest available market price</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -696,7 +881,7 @@ with col2:
         <div class="execution-highlight">
             <div class="metric-label">European execution instrument</div>
             <div class="ticker">{etf['ticker'] if etf else '—'}</div>
-            <div class="price">{('$' + format(execution_price, '.2f')) if execution_price is not None else 'PRICE UNAVAILABLE'}</div>
+            <div class="price">{('€' + format(execution_price, '.2f')) if execution_price is not None else 'PRICE UNAVAILABLE'}</div>
             <div class="meta">{etf['description'] if etf else ''} · {etf['exchange'] if etf else ''} · {etf['currency'] if etf else ''}</div>
             <div class="meta">Latest available market price · Yahoo Finance</div>
         </div>
@@ -718,7 +903,7 @@ for strategy_key, execution_key in {"QQQ": "SXRV", "SPY": "SXR8", "GLD": "EGLN",
     exec_rows.append({
         "Signal": strategy_key,
         "Execution ETF": execution_key,
-        "Latest Price": f"${p:.2f}" if p is not None else "UNAVAILABLE",
+        "Latest Price": f"€{p:.2f}" if p is not None else "UNAVAILABLE",
         "Data Status": meta.get("status", "UNAVAILABLE"),
         "Yahoo Symbol": meta.get("symbol", execution_key),
     })
@@ -749,8 +934,8 @@ st.markdown('<div class="panel-title">Order sizing</div>', unsafe_allow_html=Tru
 col1, col2 = st.columns([0.7, 1.3], gap="large")
 with col1:
     portfolio_size = st.number_input(
-        "Portfolio Size (USD)", min_value=1000, max_value=1000000,
-        value=25000, step=1000, help="Enter total portfolio value in USD"
+        "Portfolio Size (EUR)", min_value=1000, max_value=1000000,
+        value=25000, step=1000, help="Enter total portfolio value in EUR"
     )
 with col2:
     st.markdown(f"""
@@ -797,9 +982,9 @@ if target_etf:
                         <td><span class="action-buy">BUY</span></td>
                         <td>{name}</td>
                         <td><strong>{ticker}</strong></td>
-                        <td>${price:.2f}</td>
+                        <td>€{price:.2f}</td>
                         <td>{shares:.2f}</td>
-                        <td>${total_cost:,.2f}</td>
+                        <td>€{total_cost:,.2f}</td>
                         <td>100.0%</td>
                     </tr>
                 </tbody>
@@ -812,7 +997,7 @@ if target_etf:
                     TER: {target_etf['ter']} | Currency: {target_etf['currency']}
                 </span>
                 <span style="color:#6d6d66; font-size:12px;">
-                    Portfolio: ${portfolio_size:,.2f} → Target: ${total_cost:,.2f}
+                    Portfolio: €{portfolio_size:,.2f} → Target: €{total_cost:,.2f}
                 </span>
             </div>
         </div>
@@ -820,8 +1005,8 @@ if target_etf:
 
         st.info(
             f"📈 **BUY Order:** Place a **limit order** for {shares:.2f} shares "
-            f"of {ticker} at or near ${price:.2f}. Total cost: ${total_cost:,.2f}. "
-            f"Price source: Yahoo Finance · latest available LSE daily close (not a live quote)."
+            f"of {ticker} at or near €{price:.2f}. Total cost: €{total_cost:,.2f}. "
+            f"Price source: Yahoo Finance · latest available market price (not a live bid/ask quote)."
         )
 else:
     st.warning("⚠️ No order book plan generated. Please check your configuration.")
@@ -979,6 +1164,144 @@ fig.update_yaxes(showgrid=True, gridcolor='#e7e7e1')
 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 # ============================================
+# STRATEGY METHOD & 10-YEAR BACKTEST
+# ============================================
+
+st.markdown(
+    '<div class="section-kicker" style="margin-top:38px;">Strategy Method & Evidence</div>',
+    unsafe_allow_html=True
+)
+st.markdown(
+    '<div class="panel-title">How S6 works — and how it has behaved historically</div>',
+    unsafe_allow_html=True
+)
+
+method_col, results_col = st.columns([1.0, 1.25], gap="large")
+
+with method_col:
+    st.markdown("""
+    <div class="rule-card" style="height:100%;">
+        <div class="rule-title">The S6 decision sequence</div>
+
+        <div class="rule-text"><strong>1 · Determine the regime.</strong>
+        The model remains in EQUITY state until either SPY falls below its
+        200-day SMA or VIX reaches 30.</div>
+
+        <div class="rule-text"><strong>2 · Re-entry is deliberately harder.</strong>
+        Once defensive, the model returns to EQUITY only when SPY is above its
+        50-day EMA and VIX is below 25.</div>
+
+        <div class="rule-text"><strong>3 · Choose the exposure.</strong>
+        In EQUITY state, VIX &lt; 20 selects QQQ; 20 ≤ VIX &lt; 30 selects SPY.
+        In DEFENSIVE state, positive 60-day GLD momentum selects GLD;
+        otherwise BIL.</div>
+
+        <div class="rule-text"><strong>4 · Execute in EUR.</strong>
+        The signal is calculated from US-market proxies. The corresponding
+        trade is placed in the confirmed EUR IBKR trading line:
+        QQQ → SXRV · SPY → SXR8 · GLD → EGLN · BIL → IBC1.</div>
+
+        <div class="rule-text"><strong>5 · Timing.</strong>
+        A completed US-session signal is actionable on the following execution
+        session. The model does not use the next day's information to create
+        the signal.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+if backtest is not None:
+    s6m = backtest["s6_metrics"]
+    spym = backtest["spy_metrics"]
+
+    with results_col:
+        st.markdown("""
+        <div class="rule-card">
+            <div class="rule-title">10-year proxy backtest vs SPY</div>
+            <div class="rule-text">
+                Signal rules use SPY / QQQ / GLD / VIX. Performance uses adjusted
+                total-return prices for SPY / QQQ / GLD / BIL. The signal on day t
+                is applied to day t+1.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("S6 CAGR", f"{s6m['cagr']*100:.1f}%")
+        with m2:
+            st.metric("SPY CAGR", f"{spym['cagr']*100:.1f}%")
+        with m3:
+            st.metric("S6 Max DD", f"{s6m['max_drawdown']*100:.1f}%")
+        with m4:
+            st.metric("SPY Max DD", f"{spym['max_drawdown']*100:.1f}%")
+
+        m5, m6, m7, m8 = st.columns(4)
+        with m5:
+            st.metric("S6 Volatility", f"{s6m['volatility']*100:.1f}%")
+        with m6:
+            st.metric("SPY Volatility", f"{spym['volatility']*100:.1f}%")
+        with m7:
+            st.metric("S6 Sharpe", f"{s6m['sharpe']:.2f}")
+        with m8:
+            st.metric("SPY Sharpe", f"{spym['sharpe']:.2f}")
+
+    # Growth of $100 — normalized comparison.
+    bt_fig = go.Figure()
+    bt_fig.add_trace(go.Scatter(
+        x=backtest["strategy_curve"].index,
+        y=backtest["strategy_curve"],
+        name="S6",
+        line=dict(color="#1d5b46", width=2.5)
+    ))
+    bt_fig.add_trace(go.Scatter(
+        x=backtest["spy_curve"].index,
+        y=backtest["spy_curve"],
+        name="SPY",
+        line=dict(color="#77776f", width=2),
+        dash="dash"
+    ))
+    bt_fig.update_layout(
+        height=430,
+        template="plotly_white",
+        title=f"Growth of $100 · {backtest['start_date'].strftime('%d %b %Y')} – {backtest['end_date'].strftime('%d %b %Y')}",
+        yaxis_title="Portfolio value ($)",
+        xaxis_title="",
+        hovermode="x unified",
+        paper_bgcolor="#f5f5f2",
+        plot_bgcolor="#ffffff",
+        font=dict(color="#222222"),
+        legend=dict(bgcolor="#ffffff", bordercolor="#d8d8d2", borderwidth=1)
+    )
+    bt_fig.update_xaxes(showgrid=True, gridcolor="#e7e7e1")
+    bt_fig.update_yaxes(showgrid=True, gridcolor="#e7e7e1")
+    st.plotly_chart(bt_fig, use_container_width=True, config={"displayModeBar": False})
+
+    annual_display = backtest["annual_returns"].copy()
+    annual_display.index.name = "Year"
+    annual_display = annual_display.rename(columns={"S6": "S6", "SPY": "SPY"})
+    annual_display = annual_display.sort_index(ascending=False)
+    for col in annual_display.columns:
+        annual_display[col] = annual_display[col].map(lambda x: f"{x*100:.1f}%")
+
+    st.dataframe(
+        annual_display,
+        use_container_width=True,
+        hide_index=False
+    )
+
+    st.caption(
+        "Backtest period is the latest rolling 10 years available in Yahoo Finance. "
+        "Returns include distributions through adjusted prices. No fees, slippage, "
+        "taxes, FX conversion costs, bid/ask spreads or execution-price differences "
+        "between the US signal proxies and the EUR trading lines are modeled. "
+        "Historical results are not a guarantee of future performance."
+    )
+else:
+    st.info(
+        "The 10-year backtest could not be calculated from the current market-data feed. "
+        "The live S6 signal remains available."
+    )
+
+# ============================================
 # SIDEBAR — COMPACT CONTROLS
 # ============================================
 
@@ -1011,7 +1334,7 @@ with st.sidebar:
 
 st.markdown(f"""
 <div class="footer-note">
-    S6 is a rules-based decision-support system. Signal data uses US-market proxy instruments; execution uses European UCITS counterparts. Signal values represent the latest completed US session. Execution prices are latest available daily closes from Yahoo Finance and are not live bid/ask quotes.
+    S6 is a rules-based decision-support system. Signal data uses US-market proxy instruments; execution uses European UCITS counterparts. Signal values represent the latest completed US session. Execution prices are the latest available market observations from Yahoo Finance and are not live bid/ask quotes.
 </div>
 """, unsafe_allow_html=True)
 
