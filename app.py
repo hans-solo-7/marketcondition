@@ -402,7 +402,14 @@ def fetch_s6_robustness():
 
         return r
 
-    def calc_metrics(r, start=None, end=None, cost_bps=0):
+    def calc_metrics(
+        r,
+        start=None,
+        end=None,
+        commission_bps_per_leg=5.0,
+        venue_bps_per_leg=0.10,
+        spread_bps_per_leg=2.5,
+    ):
         r = r.copy()
         if start is not None:
             r = r.loc[r.index >= pd.Timestamp(start)]
@@ -413,12 +420,28 @@ def fetch_s6_robustness():
         if len(r) < 252:
             return None
 
-        # Apply a simple cost whenever the target changes. This is intentionally
-        # conservative and transparent rather than pretending to model fills.
-        if cost_bps:
-            selected = targets.shift(1).reindex(r.index)
-            changes = selected.ne(selected.shift(1)) & selected.notna() & selected.shift(1).notna()
-            r = r - changes.astype(float) * (cost_bps / 10000.0)
+        # A strategy switch is two trades:
+        #   1) sell the old ETF
+        #   2) buy the new ETF
+        #
+        # We model costs per leg rather than charging a single arbitrary
+        # "cost per switch". This makes the assumption auditable.
+        selected = targets.shift(1).reindex(r.index)
+        switches = (
+            selected.ne(selected.shift(1))
+            & selected.notna()
+            & selected.shift(1).notna()
+        )
+
+        total_cost_bps_per_switch = 2.0 * (
+            commission_bps_per_leg
+            + venue_bps_per_leg
+            + spread_bps_per_leg
+        )
+
+        r = r - switches.astype(float) * (
+            total_cost_bps_per_switch / 10000.0
+        )
 
         curve = (1 + r).cumprod()
         years = len(r) / 252.0
@@ -446,6 +469,7 @@ def fetch_s6_robustness():
         switches = int(
             (selected.ne(selected.shift(1)) & selected.notna() & selected.shift(1).notna()).sum()
         )
+        switches_per_year = switches / years if years > 0 else np.nan
 
         return {
             "start": r.index[0],
@@ -464,6 +488,7 @@ def fetch_s6_robustness():
             "positive_year_pct": positive_years,
             "defensive_pct": defensive_pct,
             "switches": switches,
+            "switches_per_year": switches_per_year,
             "ending_value": float(curve.iloc[-1]),
         }
 
@@ -507,17 +532,41 @@ def fetch_s6_robustness():
             m["delay"] = f"T+{delay}"
             delay_rows.append(m)
 
-    # Cost sensitivity over the trailing 10Y.
+    # Explicit execution-cost sensitivity over the trailing 10Y.
+    #
+    # IBKR's published German/European commission schedule is around 5 bps
+    # under tiered pricing for the relevant volume bracket. Xetra ETF exchange
+    # and clearing charges are much smaller. We therefore test a range of
+    # all-in PER-LEG assumptions, including a conservative spread/slippage
+    # allowance, rather than pretending that 50 bps per switch is normal.
     cost_rows = []
-    for bps in [0, 5, 10, 20, 30, 50]:
+    cost_cases = [
+        ("No costs", 0.0, 0.0, 0.0),
+        ("IBKR + venue", 5.0, 0.10, 0.0),
+        ("Realistic all-in", 5.0, 0.10, 2.5),
+        ("Conservative all-in", 5.0, 0.10, 5.0),
+        ("Stress", 10.0, 0.25, 10.0),
+        ("Extreme stress", 20.0, 0.50, 20.0),
+    ]
+
+    for label, commission_bps, venue_bps, spread_bps in cost_cases:
         m = calc_metrics(
             build_returns(1),
             latest - pd.DateOffset(years=10),
             latest,
-            cost_bps=bps
+            commission_bps_per_leg=commission_bps,
+            venue_bps_per_leg=venue_bps,
+            spread_bps_per_leg=spread_bps,
         )
         if m:
-            m["cost_bps"] = bps
+            m["cost_case"] = label
+            m["commission_bps"] = commission_bps
+            m["venue_bps"] = venue_bps
+            m["spread_bps"] = spread_bps
+            m["all_in_per_leg_bps"] = (
+                commission_bps + venue_bps + spread_bps
+            )
+            m["all_in_per_switch_bps"] = 2.0 * m["all_in_per_leg_bps"]
             cost_rows.append(m)
 
     return {
@@ -1567,6 +1616,9 @@ if robustness is not None:
         fixed_display[col] = fixed_display[col].map(lambda x: f"{x*100:.1f}%")
     for col in ["sharpe", "sortino", "calmar"]:
         fixed_display[col] = fixed_display[col].map(lambda x: f"{x:.2f}")
+    fixed_display["switches_per_year"] = fixed_display["switches_per_year"].map(
+        lambda x: f"{x:.1f}"
+    )
     fixed_display = fixed_display.rename(columns={
         "window": "Window",
         "start": "Start",
@@ -1583,12 +1635,13 @@ if robustness is not None:
         "positive_year_pct": "Positive Years",
         "defensive_pct": "Defensive Time",
         "switches": "Switches",
+        "switches_per_year": "Switches / Year",
     })
     st.dataframe(
         fixed_display[
             ["Window", "Start", "End", "CAGR", "Volatility", "Sharpe",
              "Sortino", "Max DD", "Calmar", "Best Year", "Worst Year",
-             "Positive Years", "Defensive Time", "Switches"]
+             "Positive Years", "Defensive Time", "Switches", "Switches / Year"]
         ],
         use_container_width=True,
         hide_index=True
@@ -1657,14 +1710,22 @@ if robustness is not None:
         )
 
     with c2:
-        st.markdown("**Estimated trading-cost sensitivity**")
+        st.markdown("**Execution-cost sensitivity — two legs per switch**")
+        st.caption(
+            "Reference case: 5.0 bps IBKR commission + 0.1 bps venue/clearing "
+            "+ 2.5 bps spread/slippage per leg. IBKR's published European schedule "
+            "and Xetra fee table support the commission/venue assumptions; the "
+            "spread allowance is an explicit research assumption."
+        )
         c = cost.copy()
         c["CAGR"] = c["cagr"].map(lambda x: f"{x*100:.1f}%")
         c["Max DD"] = c["max_drawdown"].map(lambda x: f"{x*100:.1f}%")
         c["Sharpe"] = c["sharpe"].map(lambda x: f"{x:.2f}")
-        c["Cost"] = c["cost_bps"].map(lambda x: f"{x} bps / switch")
+        c["Per leg"] = c["all_in_per_leg_bps"].map(lambda x: f"{x:.2f} bps")
+        c["Per switch"] = c["all_in_per_switch_bps"].map(lambda x: f"{x:.2f} bps")
+        c["Case"] = c["cost_case"]
         st.dataframe(
-            c[["Cost", "CAGR", "Max DD", "Sharpe"]],
+            c[["Case", "Per leg", "Per switch", "CAGR", "Max DD", "Sharpe"]],
             use_container_width=True,
             hide_index=True
         )
@@ -1687,9 +1748,11 @@ if robustness is not None:
 
     st.caption(
         "Internal research only. The robustness engine uses the same US signal "
-        "proxies and T+1 methodology as the live S6 model. Cost sensitivity is "
-        "a simple per-switch deduction, not a broker fill simulation. No EUR "
-        "execution-price history is used in this research layer."
+        "proxies and T+1 methodology as the live S6 model. Execution-cost cases "
+        "model two legs per switch (sell + buy): IBKR commission, venue/clearing "
+        "costs, and an explicit spread/slippage allowance. This is still an "
+        "analytical estimate, not a broker fill simulation. No EUR execution-price "
+        "history is used in this research layer."
     )
 
 # ============================================
