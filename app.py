@@ -874,8 +874,18 @@ def fetch_market_data():
         is_above_ema50 = current_spy > current_ema50
 
         # ========================================
-        # S6 SIGNAL ALLOCATION LOGIC
+        # S6 SIGNAL ALLOCATION LOGIC — 16/24 HYSTERESIS
         # ========================================
+        # Reconstruct the tactical equity state from the completed historical
+        # VIX observations. This guarantees that the live path always has a
+        # defined tactical asset and that 16/24 hysteresis is preserved.
+        tactical_asset = "SPY"
+        for v in vix.dropna():
+            if float(v) < 16:
+                tactical_asset = "QQQ"
+            elif float(v) > 24:
+                tactical_asset = "SPY"
+
         if in_equity_state == 0:
             if current_gld_mom > 0:
                 s6_target = "GLD"
