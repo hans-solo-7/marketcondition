@@ -228,7 +228,7 @@ st.markdown("""
 st.markdown("""
 <div class="masthead">
     <div>
-        <div class="brand">S6 Investment Dashboard</div>
+        <div class="brand">S6 Investment Dashboard · 16/24</div>
         <div class="brand-sub">Systematic Allocation · Decision Support</div>
     </div>
     <div class="asof">
@@ -252,7 +252,7 @@ ETF_CONFIG = {
         'currency': 'EUR',
         'description': 'iShares Nasdaq 100 UCITS ETF (Acc)',
         'signal': 'Calm Bull',
-        'condition': 'SPY > SMA200 & VIX < 20',
+        'condition': 'Equity state + VIX < 16 (enter QQQ); remain until VIX > 24',
         'tag': 'tag-qqq'
     },
     'SPY': {
@@ -264,7 +264,7 @@ ETF_CONFIG = {
         'currency': 'EUR',
         'description': 'iShares Core S&P 500 UCITS ETF (Acc)',
         'signal': 'Elevated Bull',
-        'condition': 'SPY > SMA200 & 20 <= VIX < 30',
+        'condition': 'Equity state + VIX > 24 (switch to SPY); remain until VIX < 16',
         'tag': 'tag-spy'
     },
     'GLD': {
@@ -311,6 +311,8 @@ def get_etf_config(s6_target):
 # by hard-coded fallback prices.
 
 SIGNAL_TICKERS = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
+QQQ_ENTRY_VIX = 16.0
+SPY_EXIT_VIX = 24.0
 EXECUTION_TICKERS = {
     # Confirmed by the user as tradable in their IBKR account.
     "SXRV": ["SXRV.DE"],   # Xetra / EUR
@@ -366,6 +368,7 @@ def fetch_s6_robustness():
     gld_mom = close["GLD"].pct_change(60)
 
     state = 1
+    tactical_asset = "SPY"
     targets = pd.Series(index=close.index, dtype="object")
 
     for i in range(len(close)):
@@ -387,7 +390,15 @@ def fetch_s6_robustness():
         if state == 0:
             targets.iloc[i] = "GLD" if gld_mom.iloc[i] > 0 else "BIL"
         else:
-            targets.iloc[i] = "QQQ" if v < 20 else "SPY"
+            # VIX hysteresis: enter QQQ below 16; switch to SPY above 24.
+            # Between 16 and 24, retain the existing tactical equity position.
+            if tactical_asset == "QQQ":
+                if v > 24:
+                    tactical_asset = "SPY"
+            else:
+                if v < 16:
+                    tactical_asset = "QQQ"
+            targets.iloc[i] = tactical_asset
 
     asset_returns = adj.pct_change()
 
@@ -589,6 +600,8 @@ def fetch_10y_backtest():
     - The signal calculated after the US close on day t is applied to the
       return on day t+1. This avoids same-day look-ahead.
     - The strategy is 100% invested in exactly one of QQQ, SPY, GLD or BIL.
+    - Equity tactical allocation uses VIX hysteresis: enter QQQ below 16,
+      switch to SPY above 24, and retain the current equity allocation between 16 and 24.
     - No transaction costs, slippage, taxes, FX effects, bid/ask spread or
       differences between US signal proxies and the European execution lines
       are included.
@@ -648,6 +661,7 @@ def fetch_10y_backtest():
 
     # Same asymmetric state machine as the live strategy.
     equity_state = 1
+    tactical_asset = "SPY"
     states = pd.Series(np.nan, index=close.index, dtype=float)
     targets = pd.Series(index=close.index, dtype="object")
 
@@ -672,7 +686,15 @@ def fetch_10y_backtest():
         if equity_state == 0:
             targets.iloc[i] = "GLD" if gld_mom.iloc[i] > 0 else "BIL"
         else:
-            targets.iloc[i] = "QQQ" if v < 20 else "SPY"
+            # VIX hysteresis: enter QQQ below 16; switch to SPY above 24.
+            # Between 16 and 24, retain the existing tactical equity position.
+            if tactical_asset == "QQQ":
+                if v > 24:
+                    tactical_asset = "SPY"
+            else:
+                if v < 16:
+                    tactical_asset = "QQQ"
+            targets.iloc[i] = tactical_asset
 
     # Keep only the requested 10-year window, while retaining warm-up
     # history before the window so the indicators are fully formed.
@@ -874,10 +896,20 @@ def fetch_market_data():
                 s6_class = "signal-bil"
                 s6_emoji = "🏦"
         else:
-            if current_vix < 20:
+            # Tactical equity hysteresis:
+            # enter QQQ only when VIX < 16; switch to SPY only when VIX > 24.
+            # Between 16 and 24, keep the existing tactical equity position.
+            if tactical_asset == "QQQ":
+                if current_vix > 24:
+                    tactical_asset = "SPY"
+            else:
+                if current_vix < 16:
+                    tactical_asset = "QQQ"
+
+            if tactical_asset == "QQQ":
                 s6_target = "QQQ"
                 s6_reason = (
-                    f"Calm Bull active (VIX < 20: {current_vix:.1f}) "
+                    f"Calm Bull tactical allocation (QQQ held; VIX {current_vix:.1f}) "
                     "-> 100% Tech Exposure"
                 )
                 s6_color = "#222222"
@@ -886,7 +918,7 @@ def fetch_market_data():
             else:
                 s6_target = "SPY"
                 s6_reason = (
-                    f"Elevated Bull active (20 <= VIX < 30: {current_vix:.1f}) "
+                    f"Core Equity tactical allocation (SPY held; VIX {current_vix:.1f}) "
                     "-> 100% Core Equity"
                 )
                 s6_color = "#1d5b46"
@@ -1287,9 +1319,9 @@ st.markdown('<div class="panel-title">Signal → execution map</div>', unsafe_al
 matrix_data = []
 for target, config in ETF_CONFIG.items():
     if target == 'QQQ':
-        condition = 'Equity state + VIX < 20'
+        condition = 'Equity state + VIX < 16 to enter QQQ; > 24 to exit QQQ'
     elif target == 'SPY':
-        condition = 'Equity state + 20 ≤ VIX < 30'
+        condition = 'Equity state + VIX > 24 to enter SPY; < 16 to exit SPY'
     elif target == 'GLD':
         condition = 'Defensive state + GLD 60d momentum > 0'
     else:
@@ -1455,9 +1487,9 @@ with method_col:
         above its 50-day EMA and VIX is below 25.
 
         **3 · Choose the exposure.**  
-        In EQUITY state, VIX < 20 selects **QQQ**; 20 ≤ VIX < 30 selects
-        **SPY**. In DEFENSIVE state, positive 60-day GLD momentum selects
-        **GLD**; otherwise **BIL**.
+        In EQUITY state, VIX < 16 selects **QQQ** and VIX > 24 switches to **SPY**.
+        Between 16 and 24 the current equity allocation is retained. In DEFENSIVE
+        state, positive 60-day GLD momentum selects **GLD**; otherwise **BIL**.
 
         **4 · Execute in EUR.**  
         The signal is calculated from US-market proxies. The corresponding
@@ -1777,7 +1809,7 @@ with st.sidebar:
     st.write(f"VIX  {data['vix_close']:.1f}")
     st.markdown("---")
     st.markdown("**S6 rules**")
-    st.caption("Equity: VIX < 20 → QQQ; 20–30 → SPY")
+    st.caption("Equity: VIX < 16 → QQQ; VIX > 24 → SPY; 16–24 → hold")
     st.caption("Defensive: GLD momentum > 0 → GLD; otherwise BIL")
     st.caption("Exit: SPY < 200 SMA OR VIX ≥ 30")
     st.caption("Re-enter: SPY > 50 EMA AND VIX < 25")
