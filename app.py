@@ -320,6 +320,214 @@ EXECUTION_TICKERS = {
 }
 
 
+
+@st.cache_data(ttl=86400)
+def fetch_s6_robustness():
+    """
+    Internal robustness analysis for S6.
+
+    Tests:
+      - fixed trailing windows: 3Y / 5Y / 7Y / 10Y
+      - fixed calendar start-date sensitivity
+      - rolling 5Y and 10Y endpoint windows
+      - execution delay sensitivity: T+1 vs T+2
+      - simple transaction-cost sensitivity based on signal changes
+
+    IMPORTANT:
+    This deliberately uses the same S6 signal construction as the live/backtest
+    engine. It is an internal research tool, not a forecast.
+    """
+    tickers = ["SPY", "QQQ", "GLD", "BIL", "^VIX"]
+
+    raw = yf.download(
+        tickers,
+        period="15y",
+        interval="1d",
+        auto_adjust=False,
+        progress=False,
+        threads=True
+    )
+
+    if raw.empty or not isinstance(raw.columns, pd.MultiIndex):
+        raise ValueError("Unable to retrieve sufficient historical data.")
+
+    close = raw["Close"][tickers].dropna(how="any")
+    adj = raw["Adj Close"][["SPY", "QQQ", "GLD", "BIL"]].reindex(close.index)
+    adj = adj.dropna(how="any")
+
+    idx = close.index.intersection(adj.index)
+    close = close.loc[idx]
+    adj = adj.loc[idx]
+
+    spy = close["SPY"]
+    vix = close["^VIX"]
+    sma200 = spy.rolling(200, min_periods=200).mean()
+    ema50 = spy.ewm(span=50, adjust=False, min_periods=50).mean()
+    gld_mom = close["GLD"].pct_change(60)
+
+    state = 1
+    targets = pd.Series(index=close.index, dtype="object")
+
+    for i in range(len(close)):
+        if pd.isna(sma200.iloc[i]) or pd.isna(ema50.iloc[i]) or pd.isna(gld_mom.iloc[i]):
+            continue
+
+        p = float(spy.iloc[i])
+        s200 = float(sma200.iloc[i])
+        e50 = float(ema50.iloc[i])
+        v = float(vix.iloc[i])
+
+        if state == 1:
+            if p < s200 or v >= 30:
+                state = 0
+        else:
+            if p > e50 and v < 25:
+                state = 1
+
+        if state == 0:
+            targets.iloc[i] = "GLD" if gld_mom.iloc[i] > 0 else "BIL"
+        else:
+            targets.iloc[i] = "QQQ" if v < 20 else "SPY"
+
+    asset_returns = adj.pct_change()
+
+    def build_returns(delay=1):
+        """Signal on t, execute on t+delay."""
+        selected = targets.shift(delay)
+        r = pd.Series(np.nan, index=close.index, dtype=float)
+
+        for asset in ["QQQ", "SPY", "GLD", "BIL"]:
+            mask = selected == asset
+            r.loc[mask] = asset_returns.loc[mask, asset]
+
+        return r
+
+    def calc_metrics(r, start=None, end=None, cost_bps=0):
+        r = r.copy()
+        if start is not None:
+            r = r.loc[r.index >= pd.Timestamp(start)]
+        if end is not None:
+            r = r.loc[r.index <= pd.Timestamp(end)]
+        r = r.dropna()
+
+        if len(r) < 252:
+            return None
+
+        # Apply a simple cost whenever the target changes. This is intentionally
+        # conservative and transparent rather than pretending to model fills.
+        if cost_bps:
+            selected = targets.shift(1).reindex(r.index)
+            changes = selected.ne(selected.shift(1)) & selected.notna() & selected.shift(1).notna()
+            r = r - changes.astype(float) * (cost_bps / 10000.0)
+
+        curve = (1 + r).cumprod()
+        years = len(r) / 252.0
+        total = float(curve.iloc[-1] - 1)
+        cagr = float(curve.iloc[-1] ** (1 / years) - 1)
+
+        vol = float(r.std(ddof=1) * np.sqrt(252))
+        downside = r[r < 0].std(ddof=1) * np.sqrt(252)
+        sortino = float((r.mean() * 252) / downside) if downside and np.isfinite(downside) else np.nan
+        sharpe = float((r.mean() / r.std(ddof=1)) * np.sqrt(252)) if r.std(ddof=1) else np.nan
+
+        dd = curve / curve.cummax() - 1
+        max_dd = float(dd.min())
+        calmar = float(cagr / abs(max_dd)) if max_dd < 0 else np.nan
+
+        annual = (1 + r).groupby(r.index.year).prod() - 1
+        best_year = float(annual.max())
+        worst_year = float(annual.min())
+        positive_years = float((annual > 0).mean())
+
+        selected = targets.shift(1).reindex(r.index)
+        defensive = selected.isin(["GLD", "BIL"])
+        defensive_pct = float(defensive.mean())
+
+        switches = int(
+            (selected.ne(selected.shift(1)) & selected.notna() & selected.shift(1).notna()).sum()
+        )
+
+        return {
+            "start": r.index[0],
+            "end": r.index[-1],
+            "days": len(r),
+            "years": years,
+            "total_return": total,
+            "cagr": cagr,
+            "volatility": vol,
+            "sharpe": sharpe,
+            "sortino": sortino,
+            "max_drawdown": max_dd,
+            "calmar": calmar,
+            "best_year": best_year,
+            "worst_year": worst_year,
+            "positive_year_pct": positive_years,
+            "defensive_pct": defensive_pct,
+            "switches": switches,
+            "ending_value": float(curve.iloc[-1]),
+        }
+
+    latest = close.index[-1]
+    rows = []
+
+    # Fixed trailing windows.
+    for years, label in [(3, "Trailing 3Y"), (5, "Trailing 5Y"), (7, "Trailing 7Y"), (10, "Trailing 10Y")]:
+        m = calc_metrics(build_returns(1), latest - pd.DateOffset(years=years), latest)
+        if m:
+            m["window"] = label
+            rows.append(m)
+
+    # Calendar start sensitivity: same end date, different starting years.
+    for year in [2012, 2014, 2016, 2018, 2020, 2022]:
+        m = calc_metrics(build_returns(1), pd.Timestamp(f"{year}-01-01"), latest)
+        if m:
+            m["window"] = f"Start {year}"
+            rows.append(m)
+
+    # Rolling 5Y and 10Y endpoint sensitivity, annual endpoints.
+    rolling_rows = []
+    for end_year in range(latest.year - 9, latest.year + 1):
+        end = pd.Timestamp(f"{end_year}-12-31")
+        if end > latest:
+            end = latest
+
+        for years, label in [(5, "Rolling 5Y"), (10, "Rolling 10Y")]:
+            start = end - pd.DateOffset(years=years)
+            m = calc_metrics(build_returns(1), start, end)
+            if m:
+                m["window"] = label
+                m["endpoint"] = end
+                rolling_rows.append(m)
+
+    # Delay sensitivity.
+    delay_rows = []
+    for delay in [1, 2]:
+        m = calc_metrics(build_returns(delay), latest - pd.DateOffset(years=10), latest)
+        if m:
+            m["delay"] = f"T+{delay}"
+            delay_rows.append(m)
+
+    # Cost sensitivity over the trailing 10Y.
+    cost_rows = []
+    for bps in [0, 5, 10, 20, 30, 50]:
+        m = calc_metrics(
+            build_returns(1),
+            latest - pd.DateOffset(years=10),
+            latest,
+            cost_bps=bps
+        )
+        if m:
+            m["cost_bps"] = bps
+            cost_rows.append(m)
+
+    return {
+        "fixed": pd.DataFrame(rows),
+        "rolling": pd.DataFrame(rolling_rows),
+        "delay": pd.DataFrame(delay_rows),
+        "cost": pd.DataFrame(cost_rows),
+        "latest": latest,
+    }
+
 @st.cache_data(ttl=86400)
 def fetch_10y_backtest():
     """
@@ -801,6 +1009,13 @@ with st.spinner("Building 10-year S6 backtest..."):
     except Exception as e:
         backtest = None
         st.warning(f"10-year backtest unavailable: {e}")
+
+with st.spinner("Running internal S6 robustness tests..."):
+    try:
+        robustness = fetch_s6_robustness()
+    except Exception as e:
+        robustness = None
+        st.warning(f"Robustness analysis unavailable: {e}")
 
 # ============================================
 # DATA STATUS
@@ -1293,6 +1508,188 @@ else:
     st.info(
         "The 10-year backtest could not be calculated from the current market-data feed. "
         "The live S6 signal remains available."
+    )
+
+# ============================================
+# INTERNAL ROBUSTNESS RESEARCH
+# ============================================
+
+if robustness is not None:
+    st.markdown(
+        '<div class="section-kicker" style="margin-top:44px;">Internal Research</div>',
+        unsafe_allow_html=True
+    )
+    st.markdown("### Robustness & KPI Overview")
+    st.caption(
+        "This section is intentionally separate from the live decision. "
+        "It tests whether the headline S6 result depends heavily on a particular "
+        "start date, end date, execution delay or trading-cost assumption."
+    )
+
+    fixed = robustness["fixed"]
+    rolling = robustness["rolling"]
+    delay = robustness["delay"]
+    cost = robustness["cost"]
+
+    # Headline robustness statistics.
+    trailing = fixed[fixed["window"].str.startswith("Trailing")].copy()
+    if not trailing.empty:
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.metric(
+                "CAGR range",
+                f"{trailing['cagr'].min()*100:.1f}% – {trailing['cagr'].max()*100:.1f}%"
+            )
+        with k2:
+            st.metric(
+                "Max DD range",
+                f"{trailing['max_drawdown'].min()*100:.1f}% – {trailing['max_drawdown'].max()*100:.1f}%"
+            )
+        with k3:
+            st.metric(
+                "Sharpe range",
+                f"{trailing['sharpe'].min():.2f} – {trailing['sharpe'].max():.2f}"
+            )
+        with k4:
+            st.metric(
+                "Defensive time",
+                f"{trailing['defensive_pct'].min()*100:.1f}% – {trailing['defensive_pct'].max()*100:.1f}%"
+            )
+
+    st.markdown("#### Fixed start/end-date sensitivity")
+    fixed_display = fixed.copy()
+    for col in ["start", "end"]:
+        fixed_display[col] = pd.to_datetime(fixed_display[col]).dt.strftime("%Y-%m-%d")
+    for col in [
+        "total_return", "cagr", "volatility", "max_drawdown",
+        "best_year", "worst_year", "positive_year_pct", "defensive_pct"
+    ]:
+        fixed_display[col] = fixed_display[col].map(lambda x: f"{x*100:.1f}%")
+    for col in ["sharpe", "sortino", "calmar"]:
+        fixed_display[col] = fixed_display[col].map(lambda x: f"{x:.2f}")
+    fixed_display = fixed_display.rename(columns={
+        "window": "Window",
+        "start": "Start",
+        "end": "End",
+        "total_return": "Total Return",
+        "cagr": "CAGR",
+        "volatility": "Volatility",
+        "sharpe": "Sharpe",
+        "sortino": "Sortino",
+        "max_drawdown": "Max DD",
+        "calmar": "Calmar",
+        "best_year": "Best Year",
+        "worst_year": "Worst Year",
+        "positive_year_pct": "Positive Years",
+        "defensive_pct": "Defensive Time",
+        "switches": "Switches",
+    })
+    st.dataframe(
+        fixed_display[
+            ["Window", "Start", "End", "CAGR", "Volatility", "Sharpe",
+             "Sortino", "Max DD", "Calmar", "Best Year", "Worst Year",
+             "Positive Years", "Defensive Time", "Switches"]
+        ],
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.markdown("#### Rolling endpoint analysis")
+    if not rolling.empty:
+        roll_plot = rolling.copy()
+        roll_plot["Endpoint"] = pd.to_datetime(roll_plot["endpoint"])
+        fig_roll = go.Figure()
+        for label in ["Rolling 5Y", "Rolling 10Y"]:
+            subset = roll_plot[roll_plot["window"] == label]
+            fig_roll.add_trace(go.Scatter(
+                x=subset["Endpoint"],
+                y=subset["cagr"] * 100,
+                name=label,
+                mode="lines+markers"
+            ))
+        fig_roll.add_hline(
+            y=15.0, line_dash="dot",
+            annotation_text="15% reference"
+        )
+        fig_roll.update_layout(
+            height=360,
+            template="plotly_white",
+            title="CAGR by historical endpoint",
+            yaxis_title="CAGR (%)",
+            xaxis_title="",
+            paper_bgcolor="#f5f5f2",
+            plot_bgcolor="#ffffff",
+            font=dict(color="#222222"),
+            legend=dict(bgcolor="#ffffff")
+        )
+        st.plotly_chart(fig_roll, use_container_width=True, config={"displayModeBar": False})
+
+        roll_table = roll_plot.copy()
+        roll_table["Endpoint"] = roll_table["Endpoint"].dt.strftime("%Y-%m-%d")
+        roll_table["CAGR"] = roll_table["cagr"].map(lambda x: f"{x*100:.1f}%")
+        roll_table["Max DD"] = roll_table["max_drawdown"].map(lambda x: f"{x*100:.1f}%")
+        roll_table["Sharpe"] = roll_table["sharpe"].map(lambda x: f"{x:.2f}")
+        st.dataframe(
+            roll_table[["window", "Endpoint", "CAGR", "Max DD", "Sharpe", "defensive_pct"]]
+            .rename(columns={
+                "window": "Window",
+                "defensive_pct": "Defensive Time"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+
+    st.markdown("#### Implementation sensitivity")
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.markdown("**Signal-to-execution delay**")
+        d = delay.copy()
+        d["CAGR"] = d["cagr"].map(lambda x: f"{x*100:.1f}%")
+        d["Max DD"] = d["max_drawdown"].map(lambda x: f"{x*100:.1f}%")
+        d["Sharpe"] = d["sharpe"].map(lambda x: f"{x:.2f}")
+        st.dataframe(
+            d[["delay", "CAGR", "Max DD", "Sharpe"]].rename(
+                columns={"delay": "Execution"}
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+
+    with c2:
+        st.markdown("**Estimated trading-cost sensitivity**")
+        c = cost.copy()
+        c["CAGR"] = c["cagr"].map(lambda x: f"{x*100:.1f}%")
+        c["Max DD"] = c["max_drawdown"].map(lambda x: f"{x*100:.1f}%")
+        c["Sharpe"] = c["sharpe"].map(lambda x: f"{x:.2f}")
+        c["Cost"] = c["cost_bps"].map(lambda x: f"{x} bps / switch")
+        st.dataframe(
+            c[["Cost", "CAGR", "Max DD", "Sharpe"]],
+            use_container_width=True,
+            hide_index=True
+        )
+
+    st.markdown("#### Research interpretation")
+    if not trailing.empty:
+        cagr_min = trailing["cagr"].min()
+        cagr_max = trailing["cagr"].max()
+        dd_min = trailing["max_drawdown"].min()
+        dd_max = trailing["max_drawdown"].max()
+
+        st.info(
+            f"Across the fixed trailing windows tested, S6 CAGR spans "
+            f"{cagr_min*100:.1f}% to {cagr_max*100:.1f}%, while maximum drawdown "
+            f"spans {dd_min*100:.1f}% to {dd_max*100:.1f}%. "
+            "The key robustness question is therefore not whether one particular "
+            "10-year window looks attractive, but whether the advantage persists "
+            "across different endpoints and implementation assumptions."
+        )
+
+    st.caption(
+        "Internal research only. The robustness engine uses the same US signal "
+        "proxies and T+1 methodology as the live S6 model. Cost sensitivity is "
+        "a simple per-switch deduction, not a broker fill simulation. No EUR "
+        "execution-price history is used in this research layer."
     )
 
 # ============================================
