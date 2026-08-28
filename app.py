@@ -289,7 +289,6 @@ ETF_CONFIG = {
         'ticker': 'CNDX',
         'isin': 'IE00B53SZB19',
         'ter': '0.30%',
-        'price': 1688.00,
         'exchange': 'LSE',
         'currency': 'USD',
         'description': 'iShares Nasdaq 100 UCITS ETF (Acc)',
@@ -302,7 +301,6 @@ ETF_CONFIG = {
         'ticker': 'CSPX',
         'isin': 'IE00B5BMR087',
         'ter': '0.07%',
-        'price': 830.56,
         'exchange': 'LSE',
         'currency': 'USD',
         'description': 'iShares Core S&P 500 UCITS ETF (Acc)',
@@ -315,7 +313,6 @@ ETF_CONFIG = {
         'ticker': 'IGLN',
         'isin': 'IE00B4ND3602',
         'ter': '0.12%',
-        'price': 86.97,
         'exchange': 'LSE',
         'currency': 'USD',
         'description': 'iShares Physical Gold ETC',
@@ -328,7 +325,6 @@ ETF_CONFIG = {
         'ticker': 'IB01',
         'isin': 'IE00BGSF1X88',
         'ter': '0.07%',
-        'price': 121.60,
         'exchange': 'LSE',
         'currency': 'USD',
         'description': 'iShares $ Treasury 0-1yr UCITS ETF (Acc)',
@@ -757,7 +753,8 @@ with col2:
                 <div style="font-size:12px; color:rgba(255,255,255,0.4);">ETF to Execute</div>
                 <div style="font-size:22px; font-weight:700; color:{data['s6_color']};">{etf['ticker']}</div>
                 <div style="font-size:12px; color:rgba(255,255,255,0.6);">{etf['name']}</div>
-                <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']} | ${etf['price']:.2f}</div>
+                <div style="font-size:10px; color:rgba(255,255,255,0.3);">{etf['exchange']} | {etf['currency']} | TER: {etf['ter']}</div>
+                <div style="font-size:11px; color:rgba(255,255,255,0.55); margin-top:4px;">Latest available LSE close: {('$' + format(data['execution_price'], '.2f')) if data['execution_price'] is not None else 'UNAVAILABLE'}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -910,7 +907,7 @@ if target_etf:
         st.info(
             f"📈 **BUY Order:** Place a **limit order** for {shares:.2f} shares "
             f"of {ticker} at or near ${price:.2f}. Total cost: ${total_cost:,.2f}. "
-            f"Price source: Yahoo Finance latest available daily close."
+            f"Price source: Yahoo Finance · latest available LSE daily close (not a live quote)."
         )
 else:
     st.warning("⚠️ No order book plan generated. Please check your configuration.")
@@ -975,7 +972,7 @@ st.dataframe(
         "Ticker": st.column_config.TextColumn("Ticker", width="small"),
         "Curr": st.column_config.TextColumn("Currency", width="small"),
         "TER": st.column_config.TextColumn("TER", width="small"),
-        "Execution Price": st.column_config.TextColumn("Latest Exec. Price", width="small"),
+        "Execution Price": st.column_config.TextColumn("Latest LSE Close", width="small"),
         "Role": st.column_config.TextColumn("Role in Strategy 6", width="large"),
         "✅": st.column_config.TextColumn("", width="small"),
     },
